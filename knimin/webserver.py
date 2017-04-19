@@ -48,7 +48,8 @@ from knimin.handlers.pm_sequence import (
     PMSequenceHandler, PMSequencingCompleteHandler)
 from knimin.handlers.pm_condense import PMCondensePlatesHandler
 from knimin.handlers.pm_shotgun_pool import PMShotgunPool
-from knimin.handlers.pm_normalize import PMNormalizeHandler
+from knimin.handlers.pm_normalize import (
+    PMNormalizeHandler, PMNormalizeEchoFileHandler)
 
 define("port", default=config.http_port, type=int)
 
@@ -113,6 +114,7 @@ class WebApplication(Application):
             (r"/pm_condense/", PMCondensePlatesHandler),
             (r"/pm_shotgun_pool/", PMShotgunPool),
             (r"/pm_normalize/", PMNormalizeHandler),
+            (r"/pm_normalize_echo/", PMNormalizeEchoFileHandler),
             (r".*", NoPageHandler)
         ]
         settings = {
