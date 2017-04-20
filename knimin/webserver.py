@@ -40,7 +40,7 @@ from knimin.handlers.pm_create_study import (PMCreateStudyHandler,
                                              PMJiraUserCheckerHandler)
 from knimin.handlers.pm_library_prep import (
     PMTargetGeneLibraryPrepHandler,
-    PMMetagenomicsLibraryPrepHandler)
+    PMMetagenomicsLibraryPrepHandler, PMMetagenomicsLibraryPrepEchoHandler)
 from knimin.handlers.pm_pool_handlers import (
     PMTargetedConcentrationHandler, PMTargetedConcentrationCheckHandler,
     PMTargetedPoolHandler, PMTargetedPoolEPMotionHandler)
@@ -94,6 +94,8 @@ class WebApplication(Application):
             (r"/consent_check", AGConsentCheckHandler),
             # PlateMapper Handlers
             (r"/pm_library_prep/target_gene/", PMTargetGeneLibraryPrepHandler),
+            (r"/pm_library_prep/metagenomics/echo/",
+             PMMetagenomicsLibraryPrepEchoHandler),
             (r"/pm_library_prep/metagenomics/",
              PMMetagenomicsLibraryPrepHandler),
             (r"/pm_targeted_concentration/", PMTargetedConcentrationHandler),
