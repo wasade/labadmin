@@ -8,13 +8,14 @@
 
 from knimin.lib.configuration import config
 from knimin.lib.data_access import KniminAccess
-from knimin.lib.ag_jira import create_jira_handler
+#from knimin.lib.ag_jira import create_jira_handler
 from knimin.lib.qiita_client import QiitaClient
 
 db = KniminAccess(config)
-jira_handler = create_jira_handler(config)
+#jira_handler = create_jira_handler(config)
 qiita_client = QiitaClient(config.qiita_host, config.qiita_client_id,
                            config.qiita_client_secret,
                            server_cert=config.qiita_server_cert)
 
-__all__ = ['db', 'jira_handler', 'qiita_client']
+__all__ = ['db', #'jira_handler',
+        'qiita_client']
