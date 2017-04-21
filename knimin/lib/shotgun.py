@@ -216,11 +216,13 @@ def prepare_shotgun_libraries(plate_id, email, mosquito, kit, aliquot,
     idx_tech : str
         The index technology we want to use
     """
+    minimum_sample_vol = 0.0001
+
     plate = db.read_normalized_shotgun_plate(plate_id)
 
     # Get the number of samples to get the indices
     samples_vol = plate['plate_normalization_sample']
-    num_samples = (samples_vol > 0.0001).sum()
+    num_samples = (samples_vol > minimum_sample_vol).sum()
 
     indexes = db.generate_i5_i7_indexes(idx_tech, num_samples)
     rows, cols = samples_vol.shape
@@ -228,7 +230,7 @@ def prepare_shotgun_libraries(plate_id, email, mosquito, kit, aliquot,
     idx = 0
     for i in range(rows):
         for j in range(cols):
-            if samples_vol[i, j] > 0.0001:
+            if samples_vol[i, j] > minimum_sample_vol:
                 barcode_layout[i, j] = indexes[idx]
                 idx += 1
 
