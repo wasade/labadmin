@@ -9,6 +9,8 @@ from __future__ import division
 
 import numpy as np
 
+from knimin import db
+
 
 def compute_qpcr_concentration(cp_vals, m=-3.231, b=12.059, dil_factor=25000):
     """Computes molar concentration of libraries from qPCR Cp values.
@@ -155,3 +157,82 @@ def estimate_pool_conc_vol(sample_vols, sample_concs):
     pool_conc = total_pmols.sum() / (total_vol * nl_scalar)
 
     return(pool_conc, total_vol)
+
+
+def compute_shotgun_normalization_values(plate_layout, input_vol, input_dna):
+    """Computes the normalization variables and stores them in the DB
+
+    Parameters
+    ----------
+    plate_layout : list of list of dicts
+        The shotgun plate layout in which each well contains this information
+        {'sample_id': None, 'dna_concentration': None} in which the
+        dna_concentration is represented in nanograms per microliter
+    input_vol : float
+        The maximum input volume in microliters
+    input_dna : float
+        The desired DNA for library prep in nanograms
+
+    Returns
+    -------
+    2d numpy array, 2d numpy array, 2d numpy array
+        The water volume and the sample volume per well, represented in
+        nanoliters as well as the original dna concentrartion in ng/nL
+    """
+    input_dna = float(input_dna)
+    input_vol = float(input_vol)
+    rows = len(plate_layout)
+    cols = len(plate_layout[0])
+    dna_conc = np.zeros((rows, cols), dtype=np.float)
+    for i in range(rows):
+        for j in range(cols):
+            dna_conc[i, j] = plate_layout[i][j]['dna_concentration']
+
+    # Compute how much sample do we need
+    # ng / (ng/uL) -> uL
+    vol_sample = input_dna / dna_conc
+
+    # If a sample didn't have enough concentration simple put the total of
+    # the volume from the sample
+    vol_sample[vol_sample > input_vol] = input_vol
+
+    # Compute how much water do we need
+    vol_water = input_vol - vol_sample
+
+    # Transform both volumes to nanoliters
+    vol_sample = vol_sample * 1000
+    vol_water = vol_water * 1000
+
+    return vol_sample, vol_water
+
+
+def prepare_shotgun_libraries(plate_id, email, mosquito, kit, aliquot,
+                              idx_tech):
+    """
+    Parameters
+    ----------
+    plate_id : int
+        The
+    idx_tech : str
+        The index technology we want to use
+    """
+    minimum_sample_vol = 0.0001
+
+    plate = db.read_normalized_shotgun_plate(plate_id)
+
+    # Get the number of samples to get the indices
+    samples_vol = plate['plate_normalization_sample']
+    num_samples = (samples_vol > minimum_sample_vol).sum()
+
+    indexes = db.generate_i5_i7_indexes(idx_tech, num_samples)
+    rows, cols = samples_vol.shape
+    barcode_layout = np.zeros((rows, cols), dtype=np.int)
+    idx = 0
+    for i in range(rows):
+        for j in range(cols):
+            if samples_vol[i, j] > minimum_sample_vol:
+                barcode_layout[i, j] = indexes[idx]
+                idx += 1
+
+    db.prepare_shotgun_libraries(plate_id, email, mosquito, kit, aliquot,
+                                 barcode_layout)

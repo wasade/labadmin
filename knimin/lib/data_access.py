@@ -2458,6 +2458,19 @@ class KniminAccess(object):
 
     # - PlateMapper functions - #
 
+    def get_blanks(self):
+        """Retrieves the list of samples that are blanks
+
+        Returns
+        -------
+        list of str
+            The sample ids of the blank samples
+        """
+        with TRN:
+            sql = "SELECT sample_id FROM pm.sample WHERE is_blank = true"
+            TRN.add(sql)
+            return TRN.execute_fetchflatten()
+
     def get_studies(self):
         """Retrieves the list of studies present in the DB
 
@@ -3447,7 +3460,7 @@ class KniminAccess(object):
             return plates
 
     def extract_sample_plates(self, sample_plate_ids, email, robot, kit_lot,
-                              tool, notes=None):
+                              tool, notes=None, names=None):
         """Stores the extraction information for the given sample_plates
 
         Parameters
@@ -3464,11 +3477,15 @@ class KniminAccess(object):
             The name of the tool used for extraction
         notes : str, optional
             Notes added to the extracted plates
+        names : list of str, optional
+            Name to add, if provided
 
         Raises
         ------
         ValueError
             If sample_plate_ids is an empty list
+            If names is passed and it doesn't have the same number of elements
+                than sample_plate_ids
         """
         if not sample_plate_ids:
             raise ValueError("Provide at least one sample plate to extract")
@@ -3483,19 +3500,38 @@ class KniminAccess(object):
                 "extraction_kit_lot", kit_lot)
             tool_id = self.get_or_create_property_option_id(
                 "extraction_tool", tool)
-            sql = """INSERT INTO pm.dna_plate (
-                        email, name, created_on, sample_plate_id,
-                        extraction_robot_id, extraction_kit_lot_id,
-                        extraction_tool_id, notes)
-                     VALUES (%s, (SELECT name
-                                  FROM pm.sample_plate WHERE
-                                  sample_plate_id = %s),
-                             now(), %s, %s, %s, %s, %s)
-                     RETURNING dna_plate_id"""
+            if not names:
+                sql = """INSERT INTO pm.dna_plate (
+                            email, name, created_on, sample_plate_id,
+                            extraction_robot_id, extraction_kit_lot_id,
+                            extraction_tool_id, notes)
+                         VALUES (%s, (SELECT name
+                                      FROM pm.sample_plate WHERE
+                                      sample_plate_id = %s),
+                                 now(), %s, %s, %s, %s, %s)
+                         RETURNING dna_plate_id"""
+            else:
+                sql = """INSERT INTO pm.dna_plate (
+                            email, name, created_on, sample_plate_id,
+                            extraction_robot_id, extraction_kit_lot_id,
+                            extraction_tool_id, notes)
+                         VALUES (%s, %s, now(), %s, %s, %s, %s, %s)
+                         RETURNING dna_plate_id"""
             dna_plates = []
-            for p_id in sample_plate_ids:
-                TRN.add(sql, [email, p_id, p_id, robot_id, kit_lot_id,
-                              tool_id, notes])
+
+            if names:
+                if len(names) != len(sample_plate_ids):
+                    raise ValueError(
+                        "The list of names (%d) and the list of sample plate "
+                        "ids (%d) don't have the same number of elements." % (
+                            len(names), len(sample_plate_ids)))
+            else:
+                names = sample_plate_ids
+
+            for p_id, name in zip_longest(sample_plate_ids, names,
+                                          fillvalue=None):
+                TRN.add(sql, [email, name, p_id, robot_id,
+                              kit_lot_id, tool_id, notes])
                 dna_plates.append(TRN.execute_fetchlast())
             return dna_plates
 
@@ -3704,33 +3740,26 @@ class KniminAccess(object):
             water_volumes = np.zeros((n_rows, n_cols))
             qpcr_concentrations = np.zeros((n_rows, n_cols))
             qpcr_cps = np.zeros((n_rows, n_cols))
-            shotgun_i5_index_had_vals = False
-            shotgun_i5_index = [[None for c in range(n_cols)]
-                                for r in range(n_rows)]
-            shotgun_i7_index_had_vals = False
-            shotgun_i7_index = [[None for c in range(n_cols)]
-                                for r in range(n_rows)]
+            shotgun_index_had_vals = False
+            shotgun_index = [[None for c in range(n_cols)]
+                             for r in range(n_rows)]
 
             # get well values
             sql = """SELECT row, col, sample_volume_nl, water_volume_nl,
-                            qpcr_concentration, qpcr_cp, shotgun_i5_index_id,
-                            shotgun_i7_index_id
+                            qpcr_concentration, qpcr_cp, shotgun_index_id
                      FROM pm.shotgun_normalized_plate_well_values
                      WHERE shotgun_normalized_plate_id = %s"""
             TRN.add(sql, [shotgun_normalized_plate_id])
             well_values = TRN.execute_fetchindex()
             for (row, col, sample_volume_nl, water_volume_nl,
-                 qpcr_concentration, qpcr_cp, si5i, si7i) in well_values:
+                 qpcr_concentration, qpcr_cp, sii) in well_values:
                 sample_volumes[row, col] = sample_volume_nl
                 water_volumes[row, col] = water_volume_nl
                 qpcr_concentrations[row, col] = qpcr_concentration
                 qpcr_cps[row, col] = qpcr_cp
-                if si5i is not None:
-                    shotgun_i5_index_had_vals = True
-                shotgun_i5_index[row][col] = si5i
-                if si7i is not None:
-                    shotgun_i7_index_had_vals = True
-                shotgun_i7_index[row][col] = si7i
+                if sii is not None:
+                    shotgun_index_had_vals = True
+                shotgun_index[row][col] = sii
 
             res['plate_normalization_water'] = (
                 None if np.isnan(water_volumes).all() else water_volumes)
@@ -3741,10 +3770,8 @@ class KniminAccess(object):
                 else qpcr_concentrations)
             res['plate_qpcr_cps'] = (
                 None if np.isnan(qpcr_cps).all() else qpcr_cps)
-            res['shotgun_i5_index'] = (
-                shotgun_i5_index if shotgun_i5_index_had_vals else None)
-            res['shotgun_i7_index'] = (
-                shotgun_i7_index if shotgun_i7_index_had_vals else None)
+            res['shotgun_index'] = (
+                shotgun_index if shotgun_index_had_vals else None)
 
         return res
 
@@ -3895,10 +3922,118 @@ class KniminAccess(object):
             TRN.add(sql, [shotgun_index_aliquot_id])
             TRN.execute()
 
+    def get_shotgun_index_information(self, shotgun_index_id):
+        """Pick barcodes for shotgun
+
+        Parameters
+        ----------
+        shotgun_index_id : int
+            The id of the shotgun_index
+
+        Returns
+        -------
+        dict
+            Data stored from that shotgun_index_id
+
+        Raises
+        ------
+        ValueError
+            If shotgun_index_id doesn't exist
+        """
+        with TRN:
+            sql = """SELECT shotgun_index_id, i7_name, i7_bases, i7_row,
+                        i7_col, i5_name, i5_bases, i5_row, i5_col, name,
+                        dual_index, i5_i7_sameplate, last_index_idx
+                     FROM pm.shotgun_index
+                     LEFT JOIN pm.shotgun_index_tech
+                        USING (shotgun_index_tech_id)
+                     WHERE shotgun_index_id = %s"""
+            TRN.add(sql, [shotgun_index_id])
+            r = TRN.execute_fetchindex()
+
+            if not r:
+                raise ValueError(
+                    "%d shotgun_index_id doesn't exist" % shotgun_index_id)
+
+            return dict(r[0])
+
+    def get_shotgun_index_technology_list(self):
+        """Returns the list of available shotgun index technology
+
+        Returns
+        -------
+        list of str
+        """
+        with TRN:
+            sql = """SELECT name FROM pm.shotgun_index_tech"""
+            TRN.add(sql)
+            return TRN.execute_fetchflatten()
+
+    def generate_i5_i7_indexes(self, idx_tech, num_samples):
+        """Pick barcodes for shotgun
+
+        Parameters
+        ----------
+        idx_tech : str
+            The index technology we want to use
+        num_samples : int
+            The number barcodes to generate
+
+        Returns
+        -------
+        list of ints
+            A list of ints that represent the barcodes selected for the samples
+
+        Raises
+        ------
+        ValueError
+            If idx_tech doesn't exist
+            If the idx_tech doesn't have barcodes
+        """
+        with TRN:
+            sql = """SELECT shotgun_index_tech_id, name, dual_index,
+                        last_index_idx
+                     FROM pm.shotgun_index_tech WHERE name = %s"""
+            TRN.add(sql, [idx_tech])
+            idx_tech_vals = TRN.execute_fetchindex()
+
+            if not idx_tech_vals:
+                raise ValueError('Not a valid shotgun index '
+                                 'technology: %s' % idx_tech)
+            else:
+                # just taking the first element and converting it to dict
+                # cause there is only one element
+                idx_tech_vals = dict([v for v in idx_tech_vals][0])
+
+            sql = """SELECT shotgun_index_id
+                     FROM pm.shotgun_index
+                     WHERE shotgun_index_tech_id = %s
+                     ORDER BY shotgun_index_id"""
+            TRN.add(sql, [idx_tech_vals['shotgun_index_tech_id']])
+            indices = [r[0] for r in TRN.execute_fetchindex()]
+            if not indices:
+                raise ValueError("'%s' doesn't have any barcodes" % idx_tech)
+            len_indices = len(indices)
+
+            idx = idx_tech_vals['last_index_idx']
+            indices_generated = []
+            for i in range(num_samples):
+                indices_generated.append(indices[idx])
+                idx += 1
+
+                if len_indices <= idx:
+                    idx = 0
+
+            sql = """UPDATE pm.shotgun_index_tech
+                     SET last_index_idx = %s
+                     WHERE shotgun_index_tech_id = %s"""
+            TRN.add(sql, [idx, idx_tech_vals['shotgun_index_tech_id']])
+
+            return indices_generated
+
     def prepare_shotgun_libraries(self, normalized_plate_id, email, mosquito,
                                   shotgun_library_prep_kit,
-                                  shotgun_index_aliquot_id, i5_layout,
-                                  i7_layout):
+                                  shotgun_index_aliquot_id, barcode_layout):
         """Stores the shotgun library prep information
 
         Parameters
@@ -3913,16 +4048,13 @@ class KniminAccess(object):
             The library prep kit lot used
         shotgun_index_aliquot_id : int
             The index aliquot lot id used
-        i5_layout: list of lists of str
-            The i5 index used in each well
-        i7_layout: list of lists of str
-            The i7 index used in each well
+        barcode_layout: list of lists of int
+            The index of the barcodes for the well
 
         Returns
         -------
         ValueError
-            If `i5_layout` dimensions doesn't match the plate type
-            If `i7_layout` dimensions doesn't match the plate type
+            If `barcode_layout` dimensions doesn't match the plate type
         """
         with TRN:
             nsp = self.read_normalized_shotgun_plate(normalized_plate_id)
@@ -3934,20 +4066,16 @@ class KniminAccess(object):
             library_prep_kit_id = self.get_or_create_property_option_id(
                 "shotgun_library_prep_kit", shotgun_library_prep_kit)
 
-            nrows_i5, ncols_i5 = len(i5_layout), len(i5_layout[0])
-            if nrows_i5 != nrows or ncols_i5 != ncols:
-                raise ValueError('i5_layout wrong shape, should '
+            nrows_barcode_layout = len(barcode_layout)
+            ncols_barcode_layout = len(barcode_layout[0])
+            if nrows_barcode_layout != nrows or ncols_barcode_layout != ncols:
+                raise ValueError('barcode_layout wrong shape, should '
                                  'be: (%d, %d) but is: (%d, %d)' % (
-                                    nrows, ncols, nrows_i5, ncols_i5))
-
-            nrows_i7, ncols_i7 = len(i7_layout), len(i7_layout[0])
-            if nrows_i7 != nrows or ncols_i7 != ncols:
-                raise ValueError('i7_layout wrong shape, should '
-                                 'be: (%d, %d) but is: (%d, %d)' % (
-                                    nrows, ncols, nrows_i7, ncols_i7))
+                                    nrows, ncols, nrows_barcode_layout,
+                                    ncols_barcode_layout))
 
             sql = """UPDATE pm.shotgun_normalized_plate_well_values
-                     SET shotgun_i%s_index_id = %s, shotgun_index_aliquot = %s
+                     SET shotgun_index_id = %s, shotgun_index_aliquot = %s
                      WHERE shotgun_normalized_plate_id = %s
                         AND row = %s AND col = %s"""
 
@@ -3955,10 +4083,7 @@ class KniminAccess(object):
             for row in np.arange(nrows):
                 for col in np.arange(ncols):
                     sql_args.append([
-                        5, i5_layout[row][col], shotgun_index_aliquot_id,
-                        normalized_plate_id, row, col])
-                    sql_args.append([
-                        7, i7_layout[row][col], shotgun_index_aliquot_id,
+                        barcode_layout[row][col], shotgun_index_aliquot_id,
                         normalized_plate_id, row, col])
             TRN.add(sql, sql_args, many=True)
 
@@ -4103,7 +4228,8 @@ class KniminAccess(object):
         ----------
         plate_links : list of dicts
             A list of {'dna_plate_id': int, 'primer_plate_id': int} linking
-            a DNA plate with the primer plate used
+            a DNA plate with the primer plate used. Optionally it can
+            also include the name of the output plate
         email : str
             The email of the user doing the library prep
         robot : str
@@ -4151,7 +4277,8 @@ class KniminAccess(object):
                          processing_robot_id)
                      VALUES (%s, %s, now(), %s, %s, %s, %s, %s, %s, %s)
                      RETURNING targeted_plate_id"""
-            sql_args = [[self.read_dna_plate(l['dna_plate_id'])['name'],
+            sql_args = [[l['name'] if 'name' in l else
+                         self.read_dna_plate(l['dna_plate_id'])['name'],
                          email, l['dna_plate_id'], l['primer_plate_id'],
                          master_mix_id, tm300_id, tm50_id, water_id, robot_id]
                         for l in plate_links]
@@ -4404,14 +4531,16 @@ class KniminAccess(object):
         """
         if len(pools) == 0:
             raise ValueError("Provide at least on plate to pool.")
+
+        ts = datetime.now().strftime("%m%d%Y-%H%M%S")
         with TRN:
             for p in pools:
                 sql = """INSERT INTO pm.targeted_pool
                             (name, targeted_plate_id, volume)
                          VALUES (%s, %s, %s)
                          RETURNING targeted_pool_id"""
-                sql_args = [
-                    self.read_targeted_plate(p['targeted_plate_id'])['name'],
+                sql_args = ['%s %s' % (self.read_targeted_plate(
+                    p['targeted_plate_id'])['name'], ts),
                     p['targeted_plate_id'], p['volume']]
                 TRN.add(sql, sql_args)
                 target_pool_id = TRN.execute_fetchlast()
@@ -4696,7 +4825,8 @@ class KniminAccess(object):
                 raise ValueError('Shotgun Plate %s does not exist' % plate_id)
 
     def quantify_shotgun_plate(self, shotgun_plate_id, email, volume,
-                               plate_reader, plate_concentration):
+                               plate_reader, plate_concentration=None,
+                               cond_plates_concentration=None):
         """Adds the DNA quantification information to the shotgun plate
 
         Parameters
@@ -4709,25 +4839,59 @@ class KniminAccess(object):
             The volume used for DNA quantification
         plate_reader : str
             The plate reader used
-        plate_concentration : 2d numpy array of floats
+        plate_concentration : 2d numpy array of floats, optional
             The per-well DNA concentration
+        cond_plates_concentration : list of 2d numpy array of floats, optional
+            A list of per-well concentrations for each condensed plate
 
         Raises
         ------
         ValueError
             If `plate_concentration` dimensions doesn't match the plate type
+            If plate_concentration and cond_plates_concentration are not
+            provided
+
+        Notes
+        -----
+        if plate_concentration and cond_plates_concentration are provided,
+        cond_plates_concentration is ignored
         """
+        if plate_concentration is None and not cond_plates_concentration:
+            raise ValueError(
+                "Provide 'plate_concentration' or 'cond_plates_concentration'")
+
         with TRN:
             sgp = self.read_shotgun_plate(shotgun_plate_id)
             rp = dict(self.read_plate_type(sgp['plate_type_id']))
-            pc_rows, pc_cols = plate_concentration.shape
             processing_robot_id = self.get_or_create_property_option_id(
                 "plate_reader", plate_reader)
 
-            if pc_rows != rp['rows'] or pc_cols != rp['cols']:
-                raise ValueError('plate_concentration wrong shape, should '
-                                 'be: (%d, %d) but is: (%d, %d)' % (
-                                    rp['rows'], rp['cols'], pc_rows, pc_cols))
+            if plate_concentration is not None:
+                pc_rows, pc_cols = plate_concentration.shape
+
+                if pc_rows != rp['rows'] or pc_cols != rp['cols']:
+                    raise ValueError(
+                        'plate_concentration wrong shape, should '
+                        'be: (%d, %d) but is: (%d, %d)'
+                        % (rp['rows'], rp['cols'], pc_rows, pc_cols))
+            else:
+                plate_concentration = np.zeros((rp['rows'], rp['cols']))
+                for pid, order in sgp['condensed_plates']:
+                    conc = cond_plates_concentration[order]
+                    for rid, row in enumerate(conc):
+                        for cid, well in enumerate(row):
+                            new_cid = 2 * cid
+                            new_rid = 2 * rid
+                            # We need to fix the indexes so that each well
+                            # in the 96 well plate matches the correct well on
+                            # the 384 well plate. The position of these wells
+                            # is given by this image: https://goo.gl/UCS7Wh
+                            if order in (1, 3):
+                                new_cid = new_cid + 1
+                            if order in (2, 3):
+                                new_rid = new_rid + 1
+                            plate_concentration[new_rid, new_cid] = well
+
             # we expect 4 plates, thus 4 empty rows
             orders = [[], [], [], []]
             for pid, order in sgp['condensed_plates']:
@@ -4803,7 +4967,7 @@ class KniminAccess(object):
 
     def create_sequencing_run(self, pool_id, email, sequencer, reagent_type,
                               reagent_lot, platform, instrument_model, assay,
-                              fwd_cycles, rev_cycles):
+                              fwd_cycles, rev_cycles, name=None):
         """Stores the sequencing run information
 
         Parameters
@@ -4828,6 +4992,8 @@ class KniminAccess(object):
             The number of forward cycles used.
         rev_cycles : int
             The number of reverse cycles used.
+        name : str, optional
+            Name to add, if provided, else the name of the pool_id will be used
 
         Returns
         -------
@@ -4835,6 +5001,9 @@ class KniminAccess(object):
             The run id
         """
         with TRN:
+            if name is None:
+                name = self.read_pool(pool_id)['name']
+
             sql = """INSERT INTO pm.run (name, email, created_on,
                                          sequencer, run_pool_id,
                                          reagent_type, reagent_lot, platform,
@@ -4842,10 +5011,9 @@ class KniminAccess(object):
                                          rev_cycles)
                      VALUES (%s, %s, now(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
                      RETURNING run_id"""
-            TRN.add(sql, [self.read_pool(pool_id)['name'], email,
-                          sequencer, pool_id, reagent_type, reagent_lot,
-                          platform, instrument_model, assay, fwd_cycles,
-                          rev_cycles])
+            TRN.add(sql, [name, email, sequencer, pool_id, reagent_type,
+                          reagent_lot, platform, instrument_model, assay,
+                          fwd_cycles, rev_cycles])
             return TRN.execute_fetchlast()
 
     def read_sequencing_run(self, run_id):

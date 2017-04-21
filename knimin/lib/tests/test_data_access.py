@@ -38,6 +38,12 @@ class TestDataAccess(TestCase):
                 print("Database clean-up failed. Downstream tests might be "
                       "affected by this! Reason: %s" % format_exc(e))
 
+        # reseting DB, iTru is 3
+        sql = """UPDATE pm.shotgun_index_tech
+                 SET last_index_idx = 0
+                 WHERE shotgun_index_tech_id = 3"""
+        db._con.execute(sql)
+
     def _create_test_data_targeted_plate(self):
         # Create a study
         db.create_study(9999, title='LabAdmin test project', alias='LTP',
@@ -473,6 +479,10 @@ class TestDataAccess(TestCase):
         self.assertItemsEqual(db.list_ag_surveys([-2, -4]), truth)
 
     # - PlateMapper functions tests - #
+    def test_get_blanks(self):
+        obs = db.get_blanks()
+        self.assertItemsEqual(obs, ['BLANK', 'SWAB', 'PCRCONTROL'])
+
     def test_get_studies(self):
         obs = db.get_studies()
         self.assertEqual(obs, [])
@@ -1393,6 +1403,19 @@ class TestDataAccess(TestCase):
                'notes': None}
         self.assertEqual(obs_info, exp)
 
+        obs = db.extract_sample_plates(
+            [plate_id], 'test', exp_robot['name'], exp_kit['name'],
+            exp_tool['name'], names=['New plate name'])
+        self._clean_up_funcs.insert(0, partial(db.delete_dna_plate, obs[0]))
+        obs_info = db.read_dna_plate(obs[0])
+        self.assertEqual(obs_info['name'], 'New plate name')
+
+        # test names error
+        with self.assertRaises(ValueError):
+            db.extract_sample_plates([plate_id], 'test', exp_robot['name'],
+                                     exp_kit['name'], exp_tool['name'],
+                                     names=['New plate name', 'My other name'])
+
     def test_normalize_shotgun_plate_bad_id(self):
         with self.assertRaisesRegexp(ValueError, "shotgun plate"):
             db.normalize_shotgun_plate(99999999, 'test', 'a valid echo name',
@@ -1452,6 +1475,64 @@ class TestDataAccess(TestCase):
 
             self.assertEqual(obs[k], exp_rnsp[k])
 
+    def test_get_shotgun_index_technology_list(self):
+        obs = db.get_shotgun_index_technology_list()
+        self.assertItemsEqual(obs, ['BiooNEXTflex-HT', 'Nextera', 'iTru'])
+
+    def test_generate_i5_i7_indexes(self):
+        # these tests will depend on what's in the db, which are added
+        # just below -- Add shotgun_index valid values
+
+        # generate 10 and check the values are just fine
+        obs = db.generate_i5_i7_indexes('iTru', 10)
+        exp = [1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L]
+        self.assertEqual(obs, exp)
+
+        # ask for another 10 and make sure it starts where it should be
+        obs = db.generate_i5_i7_indexes('iTru', 10)
+        exp = [11L, 12L, 13L, 14L, 15L, 16L, 17L, 18L, 19L, 20L]
+        self.assertEqual(obs, exp)
+
+        # test that we reset index correctly
+        # iTru is 3 and we have 1360 valid barcodes
+        sql = """UPDATE pm.shotgun_index_tech
+                 SET last_index_idx = 1358
+                 WHERE shotgun_index_tech_id = 3"""
+        db._con.execute(sql)
+
+        obs = db.generate_i5_i7_indexes('iTru', 10)
+        exp = [1359L, 1360L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L]
+        self.assertEqual(obs, exp)
+
+        # testing errors
+
+        with self.assertRaises(ValueError) as ctx:
+            db.generate_i5_i7_indexes('Should Error', 10)
+        self.assertEqual(
+            ctx.exception.message, "Not a valid shotgun index technology: "
+            "Should Error")
+
+        with self.assertRaises(ValueError) as ctx:
+            db.generate_i5_i7_indexes('BiooNEXTflex-HT', 10)
+        self.assertEqual(ctx.exception.message,
+                         "'BiooNEXTflex-HT' doesn't have any barcodes")
+
+    def test_get_shotgun_index_information(self):
+        obs = db.get_shotgun_index_information(100)
+        exp = {'shotgun_index_id': 100L, 'i7_row': 3, 'name': 'iTru',
+               'i7_bases': 'TCGGTTAC', 'i7_name': 'iTru7_109_04',
+               'i5_i7_sameplate': False, 'last_index_idx': 0,
+               'dual_index': True, 'i5_name': 'iTru5_01_F', 'i7_col': 21,
+               'i5_row': 5, 'i5_bases': 'GTGAGACT', 'i5_col': 0}
+        self.assertEqual(obs, exp)
+
+        # testing errors
+
+        with self.assertRaises(ValueError) as ctx:
+            db.get_shotgun_index_information(100000000000000)
+        self.assertEqual(ctx.exception.message,
+                         "100000000000000 shotgun_index_id doesn't exist")
+
     def test_normalize_shotgun_plate(self):
         before = datetime.datetime.now()
         self._create_test_echo()
@@ -1467,8 +1548,7 @@ class TestDataAccess(TestCase):
         exp_qpcr_cp = np.zeros((16, 24))
         exp_qpcr_con = None
         exp_qpcr_cp = None
-        shotgun_i5_index = None
-        shotgun_i7_index = None
+        shotgun_index = None
 
         exp_rnsp = {'created_on': datetime.date.today(),
                     'email': email,
@@ -1484,8 +1564,7 @@ class TestDataAccess(TestCase):
                     'qpcr_email': None,
                     'qpcr_std_ladder': None,
                     'qpcr': None,
-                    'shotgun_i5_index': shotgun_i5_index,
-                    'shotgun_i7_index': shotgun_i7_index,
+                    'shotgun_index': shotgun_index,
                     'discarded': False,
                     'plate_normalization_water': exp_water,
                     'plate_normalization_sample': exp_sample,
@@ -1514,37 +1593,27 @@ class TestDataAccess(TestCase):
                 'limit_freeze_thaw_cycles': 100L}]
         self.assertEqual(obs, exp)
 
-        _ids = ['iTru5_24_G', 'iTru7_101_01', 'iTru7_101_02', 'NEXTflex78']
-        i5_layout = [[choice(_ids) for c in range(24)] for r in range(16)]
-        i7_layout = [[choice(_ids) for c in range(24)] for r in range(16)]
+        _ids = range(1, 10)
+        barcode_layout = [[choice(_ids) for c in range(24)] for r in range(16)]
         db.prepare_shotgun_libraries(
             nid, email, mosquito, shotgun_library_prep_kit,
-            shotgun_index_aliquot_id, i5_layout, i7_layout)
+            shotgun_index_aliquot_id, barcode_layout)
         obs = db.read_normalized_shotgun_plate(nid)
         exp_rnsp['mosquito'] = mosquito_id
         exp_rnsp['shotgun_library_prep_kit'] = shotgun_library_prep_kit
-        exp_rnsp['shotgun_i5_index'] = i5_layout
-        exp_rnsp['shotgun_i7_index'] = i7_layout
+        exp_rnsp['shotgun_index'] = barcode_layout
         self._basic_test_steps_for_normalized_shotgun_plate(
             before, after, obs, exp_rnsp)
 
         # testing errors for prepare_shotgun_libraries
-        i7_layout = np.random.rand(7, 7)
+        barcode_layout = np.random.rand(7, 7)
         with self.assertRaises(ValueError) as ctx:
             db.prepare_shotgun_libraries(
                 nid, email, mosquito, shotgun_library_prep_kit,
-                shotgun_index_aliquot_id, i5_layout, i7_layout)
+                shotgun_index_aliquot_id, barcode_layout)
         self.assertEqual(
-            ctx.exception.message, "i7_layout wrong shape, should be: (16, "
-            "24) but is: (7, 7)")
-        i5_layout = np.random.rand(5, 5)
-        with self.assertRaises(ValueError) as ctx:
-            db.prepare_shotgun_libraries(
-                nid, email, mosquito, shotgun_library_prep_kit,
-                shotgun_index_aliquot_id, i5_layout, i7_layout)
-        self.assertEqual(
-            ctx.exception.message, "i5_layout wrong shape, should be: (16, "
-            "24) but is: (5, 5)")
+            ctx.exception.message, "barcode_layout wrong shape, should be: "
+            "(16, 24) but is: (7, 7)")
 
         # tests for qpcr_shotgun
         # [0] only one result and [name] we just want the name
@@ -1720,8 +1789,41 @@ class TestDataAccess(TestCase):
         for obs_id, exp in zip(obs_ids, exp):
             obs = db.read_targeted_plate(obs_id)
             self.assertTrue(before <= obs.pop('created_on') <= after)
-            for k in obs:
-                self.assertEqual(obs[k], exp[k])
+            self.assertEqual(obs, exp)
+
+        # testing prepare_targeted_libraries with a name
+        plate_links = [
+            {'dna_plate_id': dna_plate_ids[0], 'primer_plate_id': 1,
+             'name': 'Targeted plate 1'},
+            {'dna_plate_id': dna_plate_ids[1], 'primer_plate_id': 2,
+             'name': 'Targeted plate 2'}]
+        before = datetime.datetime.now()
+        obs_ids = db.prepare_targeted_libraries(
+            plate_links, 'test', 'ROBE', '208484Z', '108364Z', '14459',
+            'RNBD9959')
+        after = datetime.datetime.now()
+
+        for o_id in obs_ids:
+            self._clean_up_funcs.insert(
+                0, partial(db.delete_targeted_plate, o_id))
+
+        self.assertEqual(len(obs_ids), 2)
+        exp = [
+            {'id': obs_ids[0], 'name': 'Targeted plate 1', 'email': 'test',
+             'dna_plate_id': dna_plate_ids[0], 'primer_plate_id': 1,
+             'master_mix_lot': '14459', 'robot': 'ROBE',
+             'tm300_8_tool': '208484Z', 'tm50_8_tool': '108364Z',
+             'raw_concentration': None, 'mod_concentration': None,
+             'water_lot': 'RNBD9959'},
+            {'id': obs_ids[1], 'name': 'Targeted plate 2', 'email': 'test',
+             'dna_plate_id': dna_plate_ids[1], 'primer_plate_id': 2,
+             'master_mix_lot': '14459', 'robot': 'ROBE',
+             'tm300_8_tool': '208484Z', 'tm50_8_tool': '108364Z',
+             'raw_concentration': None, 'mod_concentration': None,
+             'water_lot': 'RNBD9959'}]
+        for obs_id, exp in zip(obs_ids, exp):
+            obs = db.read_targeted_plate(obs_id)
+            self.assertTrue(before <= obs.pop('created_on') <= after)
             self.assertEqual(obs, exp)
 
         # testing quantify_targeted_plate on only one of the plates
@@ -1817,9 +1919,10 @@ class TestDataAccess(TestCase):
         exp = {'id': pool_id, 'name': 'LabAdmin test pool',
                'volume': 5, 'notes': None,
                'targeted_pools': [
-                {'name': 'Test plate', 'volume': 240, 'percentage': 50,
-                 'targeted_plate_id': targeted_plate_ids[0]},
-                {'name': 'Test plate 2', 'volume': 240, 'percentage': 50,
+                {'name': 'Test plate [0-9]*-[0-9]*', 'volume': 240,
+                 'percentage': 50, 'targeted_plate_id': targeted_plate_ids[0]},
+                {'name': 'Test plate 2 [0-9]*-[0-9]*', 'volume': 240,
+                 'percentage': 50,
                  'targeted_plate_id': targeted_plate_ids[1]}]}
 
         self.assertAlmostEqual(obs.pop('volume'), exp.pop('volume'))
@@ -1827,6 +1930,7 @@ class TestDataAccess(TestCase):
             # Remove the id from the targeted pools since it will different
             # in every run
             o.pop('id')
+            self.assertRegexpMatches(o.pop('name'), e.pop('name'))
             self.assertAlmostEqual(o.pop('volume'), e.pop('volume'))
             self.assertAlmostEqual(o.pop('percentage'), e.pop('percentage'))
             self.assertEqual(o, e)
@@ -2050,6 +2154,64 @@ class TestDataAccess(TestCase):
         }
         self.assertEqual(obs, exp)
 
+    def test_quantify_shotgun_plate_cond_concentration(self):
+        # Test error
+        sgp_id, dna_plates = self._generate_condense_dna_plates()
+        email = 'test'
+        volume = .002
+        plate_reader = 'PR1234'
+        with self.assertRaises(ValueError) as ctx:
+            db.quantify_shotgun_plate(sgp_id, email, volume, plate_reader)
+        self.assertEqual(
+            ctx.exception.message,
+            "Provide 'plate_concentration' or 'cond_plates_concentration'")
+
+        # Test success
+        cond_plates_concentration = [np.random.rand(8, 12) for i in range(4)]
+        db.quantify_shotgun_plate(
+            sgp_id, email, volume, plate_reader,
+            cond_plates_concentration=cond_plates_concentration)
+        obs = db.read_shotgun_plate(sgp_id)
+        # not testing time to avoid problems
+        del obs['created_on']
+        # just testing dna_plates
+        self.assertItemsEqual(obs['condensed_plates'], dna_plates)
+        del obs['condensed_plates']
+        # testing layout, we only gonna check 10 specific values
+        for i, color in enumerate(['b', 'r', 'y', 'g']):
+            pass
+        test_vals = [
+            (5, 3, '9999.g.2.1', cond_plates_concentration[3][2][1]),
+            (12, 10, '9999.b.6.5', cond_plates_concentration[0][6][5]),
+            (11, 11, '9999.g.5.5', cond_plates_concentration[3][5][5]),
+            (14, 5, '9999.r.7.2', cond_plates_concentration[1][7][2]),
+            (10, 9, '9999.r.5.4', cond_plates_concentration[1][5][4]),
+            (8, 8, '9999.b.4.4', cond_plates_concentration[0][4][4]),
+            (5, 15, '9999.g.2.7', cond_plates_concentration[3][2][7]),
+            (7, 0, '9999.y.3.0', cond_plates_concentration[2][3][0]),
+            (12, 9, '9999.r.6.4', cond_plates_concentration[1][6][4]),
+            (15, 4, '9999.y.7.2', cond_plates_concentration[2][7][2])]
+        for r, c, sn, conc in test_vals:
+            to_test = obs['shotgun_plate_layout'][r][c]
+            self.assertEqual(to_test['sample_id'], sn)
+            npt.assert_almost_equal(
+                to_test['dna_concentration'], conc,
+                decimal=5)
+        del obs['shotgun_plate_layout']
+        exp = {
+            'plate_type_id': 2L,
+            'dna_q_volume': None,
+            'name': 'full plate',
+            'dna_q_mail': None,
+            'robot': 'ROBE',
+            'volume': 0.002,
+            'plate_reader_id': 1L,
+            'email': 'test',
+            'dna_q_date': None,
+            'id': sgp_id
+        }
+        self.assertEqual(obs, exp)
+
     def test_quantify_shotgun_plate_one_plate(self):
         sgp_id, dna_plates = self._generate_condense_dna_plates(True)
         email = 'test'
@@ -2098,11 +2260,14 @@ class TestDataAccess(TestCase):
 
         pool_ids = self._create_test_data_pool()
         exp = [{'id': pool_ids[0], 'name': 'LabAdmin test pool',
-                'targeted_pools': ['Test plate']},
+                'targeted_pools': ['Test plate [0-9]*-[0-9]*']},
                {'id': pool_ids[1], 'name': 'LabAdmin test pool 2',
-                'targeted_pools': ['Test plate 2']}]
+                'targeted_pools': ['Test plate 2 [0-9]*-[0-9]*']}]
 
-        self.assertEqual(db.get_pool_list(), exp)
+        for x, y in zip(db.get_pool_list(), exp):
+            for i, j in zip(x.pop('targeted_pools'), y.pop('targeted_pools')):
+                self.assertRegexpMatches(i, j)
+            self.assertEqual(x, y)
 
     def test_create_sequencing_run(self):
         pool_ids = self._create_test_data_pool()
@@ -2121,6 +2286,31 @@ class TestDataAccess(TestCase):
         obs = db.read_sequencing_run(run_id)
         self.assertTrue(before <= obs.pop('created_on') <= after)
         exp = {'id': run_id, 'name': 'LabAdmin test pool', 'notes': None,
+               'sequencer': 'Knight Lab In house MiSeq',
+               'pool_id': pool_ids[0],
+               'platform': 'Illumina', 'instrument_model': 'MiSeq',
+               'reagent_type': 'MiSeq v3 150 cycle',
+               'reagent_lot': 'MS1234',
+               'assay': 'Kapa Hyper Plus',
+               'fwd_cycles': 151, 'rev_cycles': 151,
+               'email': 'test'}
+        self.assertEqual(obs, exp)
+
+        # Create the run with name
+        before = datetime.datetime.now()
+        run_id = db.create_sequencing_run(
+            pool_ids[0], 'test', 'Knight Lab In house MiSeq',
+            'MiSeq v3 150 cycle', 'MS1234',
+            'Illumina', 'MiSeq', 'Kapa Hyper Plus', 151, 151,
+            "Mi nombre es XXX")
+
+        after = datetime.datetime.now()
+        self._clean_up_funcs.insert(
+            0, partial(db.delete_sequencing_run, run_id))
+
+        obs = db.read_sequencing_run(run_id)
+        self.assertTrue(before <= obs.pop('created_on') <= after)
+        exp = {'id': run_id, 'name': 'Mi nombre es XXX', 'notes': None,
                'sequencer': 'Knight Lab In house MiSeq',
                'pool_id': pool_ids[0],
                'platform': 'Illumina', 'instrument_model': 'MiSeq',

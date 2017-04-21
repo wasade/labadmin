@@ -1,8 +1,12 @@
 import datetime
 
+import numpy as np
+
+from knimin import db
+
 
 def format_epmotion_file(volumes, destination):
-    """Writes an EPMotion file
+    """Formats the contents of an EPMotion file
 
     Parameters
     ----------
@@ -62,7 +66,7 @@ def format_index_echo_pick_list(idx_layout, volume):
         for j in range(cols):
             if idx_layout[i, j] != 0:
                 idx_info = db.get_shotgun_index_information(idx_layout[i, j])
-                dest = _well(i, j(
+                dest = _well(i, j)
 
                 i7row = idx_info['i7_row']
                 i7col = idx_info['i7_col']

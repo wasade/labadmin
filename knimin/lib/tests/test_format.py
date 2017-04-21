@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 
-from knimin.lib.format import format_sample_sheet, format_epmotion_file
+from knimin.lib.format import (format_sample_sheet, format_epmotion_file,
+                               format_normalization_echo_pick_list,
+                               format_pooling_echo_pick_list,
+                               format_index_echo_pick_list)
 
 
 class FormatTests(unittest.TestCase):
@@ -33,6 +36,80 @@ class FormatTests(unittest.TestCase):
         obs = format_epmotion_file(vol, 5)
         obs = obs.splitlines()
         self.assertEqual(obs[2], '1,a2,1,5,1.200,1')
+
+    def test_format_normalization_echo_pick_list(self):
+        vol_sample = np.full((4, 4), 1.5, dtype=np.float)
+        vol_water = np.full((4, 4), 2.0, dtype=np.float)
+
+        obs = format_normalization_echo_pick_list(vol_sample, vol_water)
+        obs_lines = obs.splitlines()
+        self.assertEqual(
+            obs_lines[0],
+            'Source Plate Name,Source Plate Type,Source Well,Concentration,'
+            'Transfer Volume,Destination Plate Name,Destination Well')
+        self.assertEqual(
+            obs_lines[1],
+            "water,384LDV_AQ_B2_HT,A1,,2.00,NormalizedDNA,A1")
+
+        self.assertEqual(
+            obs_lines[-1],
+            "1,384LDV_AQ_B2_HT,D4,,1.50,NormalizedDNA,D4")
+
+    def test_format_pooling_echo_pick_list(self):
+        vol_sample = np.full((4, 4), 1.5, dtype=np.float)
+        obs = format_pooling_echo_pick_list(vol_sample)
+        obs_lines = obs.splitlines()
+
+        self.assertEqual(
+            obs_lines[0],
+            'Source Plate Name,Source Plate Type,Source Well,Concentration,'
+            'Transfer Volume,Destination Plate Name,Destination Well')
+        self.assertEqual(
+            obs_lines[1],
+            "1,384LDV_AQ_B2_HT,A1,,1.50,NormalizedDNA,A1")
+
+        self.assertEqual(
+            obs_lines[-1],
+            "1,384LDV_AQ_B2_HT,D4,,1.50,NormalizedDNA,A1")
+
+    def test_format_index_echo_pick_list(self):
+        idx_layout = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        volume = 2.0
+
+        obs = format_index_echo_pick_list(idx_layout, volume)
+        obs_lines = obs.splitlines()
+
+        self.assertEqual(
+            obs_lines[0],
+            'Source Plate Name,Source Plate Type,Source Well,Concentration,'
+            'Transfer Volume,Destination Plate Name,Destination Well')
+        self.assertEqual(
+            obs_lines[1],
+            "IndexSourcei7,384LDV_AQ_B2_HT,A22,,2.000,IndexedDNAPlate,A1")
+
+        self.assertEqual(
+            obs_lines[-1],
+            "IndexSourcei5,384LDV_AQ_B2_HT,I1,,2.000,IndexedDNAPlate,C3")
+
+        # Try single plate
+        idx_layout = [[1361, 1362, 1363], [1364, 1365, 1366],
+                      [1367, 1368, 1369]]
+        volume = 1.5
+
+        obs = format_index_echo_pick_list(idx_layout, volume)
+        obs_lines = obs.splitlines()
+
+        self.assertEqual(
+            obs_lines[0],
+            'Source Plate Name,Source Plate Type,Source Well,Concentration,'
+            'Transfer Volume,Destination Plate Name,Destination Well')
+        self.assertEqual(
+            obs_lines[1],
+            "IndexSourcei7,384LDV_AQ_B2_HT,A1,,1.500,IndexedDNAPlate,A1")
+
+        self.assertEqual(
+            obs_lines[-1],
+            "IndexSourcei7,384LDV_AQ_B2_HT,I1,,1.500,IndexedDNAPlate,C3")
 
     def test_format_sample_sheet_bad_instrument(self):
         self.basic_details['instrument_type'] = 'bad'
