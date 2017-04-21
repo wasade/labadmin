@@ -62,7 +62,7 @@ class KniminConfig(object):
         self._get_postgres(config)
         self._get_tornado(config)
         self._get_email(config)
-        #self._get_jira(config)
+        self._get_jira(config)
         self._get_qiita(config)
         self._get_platemapper(config)
 
