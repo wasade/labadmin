@@ -12,7 +12,6 @@ from functools import partial
 from glob import glob
 from os.path import basename
 from shutil import copy
-from collections import defaultdict
 
 from tornado.escape import json_encode
 
