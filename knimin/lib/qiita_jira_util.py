@@ -70,6 +70,11 @@ def _update_qiita_samples(study_id, blanks, replicates):
         raise ValueError(
             "Can't retrieve study (%s) metadata categories from Qiita: %s %s"
             % (study_id, sc, msg))
+
+    if not categories['categories']:
+        raise ValueError("Study (%s) does not have any metadata categories" %
+                         study_id)
+
     categories = categories['categories']
 
     md = {'header': [], 'samples': defaultdict(list)}
