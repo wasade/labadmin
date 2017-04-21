@@ -15,7 +15,7 @@ from shutil import copy
 
 from tornado.escape import json_encode
 
-#from knimin import jira_handler, qiita_client, db, config
+from knimin import jira_handler, qiita_client, db, config
 from knimin import qiita_client, db, config
 from knimin.lib.format import write_sample_sheet
 
