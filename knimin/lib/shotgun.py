@@ -212,7 +212,7 @@ def prepare_shotgun_libraries(plate_id, email, mosquito, kit, aliquot,
     Parameters
     ----------
     plate_id : int
-        The
+        The shotgun plate ID
     idx_tech : str
         The index technology we want to use
     """
