@@ -688,6 +688,9 @@ class KniminAccess(object):
         list of tuple of str
             The barcode and error message if something failed
         """
+        not_provided = 'Not provided'
+        not_applicable = 'Not applicable'
+
         if external_surveys is None:
             external_surveys = []
         errors = {}
@@ -712,7 +715,7 @@ class KniminAccess(object):
 
         def _decode_zip_lookup(item):
             if item is None:
-                return 'Unspecified'
+                return not_provided
             elif isinstance(item, (str, unicode)):
                 return item.decode('utf-8')
             else:
@@ -746,15 +749,36 @@ class KniminAccess(object):
                             USING (external_survey_id)
                           WHERE external_survey = %s AND barcode IN %s"""
         external = defaultdict(dict)
+
+        # the ignored vioscreen entires either do not make sense
+        # such as vioscreen_age as the user does not fill this out,
+        # or are internal such as vioscreen_username
+        external_to_drop = {u'vioscreen_activity_level', u'vioscreen_age',
+                            u'vioscreen_bcodeid', u'vioscreen_bmi',
+                            u'vioscreen_dob', u'vioscreen_eer',
+                            u'vioscreen_email', u'vioscreen_finished',
+                            u'vioscreen_gender', u'vioscreen_height',
+                            u'vioscreen_nutrient_recommendation',
+                            u'vioscreen_procdate', u'vioscreen_protocol',
+                            u'vioscreen_recno', u'vioscreen_scf',
+                            u'vioscreen_scfv', u'vioscreen_srvid',
+                            u'vioscreen_started', u'vioscreen_time',
+                            u'vioscreen_username', u'vioscreen_user_id',
+                            u'vioscreen_visit', u'vioscreen_weight'}
+        all_barcodes = tuple(all_barcodes)
         unknown_external = {}
         for e in external_surveys:
-            for survey_id, survey, answers in self._con.execute_fetchall(
-                    external_sql, [e, tuple(all_barcodes)]):
-                external[survey_id].update({
-                    self._convert_header(survey, key): val
-                    for key, val in viewitems(answers)})
+            query_result = self._con.execute_fetchall(external_sql,
+                                                      [e, all_barcodes])
+            for survey_id, survey, answers in query_result:
+                d = {}
+                for key, val in viewitems(answers):
+                    newkey = self._convert_header(survey, key)
+                    if newkey.lower() not in external_to_drop:
+                        d[newkey] = val
+                external[survey_id].update(d)
         if external:
-            unknown_external = {k: 'Unspecified'
+            unknown_external = {k: not_provided
                                 for k in external[external.keys()[0]].keys()}
 
         # Pet survey (id 2)
@@ -764,11 +788,11 @@ class KniminAccess(object):
             md[2][barcode]['HOST_SUBJECT_ID'] = barcode
             # md[2][barcode]['HOST_TAXID'] = ????
             md[2][barcode]['TITLE'] = 'American Gut Project'
-            md[2][barcode]['ALTITUDE'] = 0
+            md[2][barcode]['ALTITUDE'] = not_applicable
             md[2][barcode]['ASSIGNED_FROM_GEO'] = 'Yes'
             md[2][barcode]['ENV_BIOME'] = 'dense settlement biome'
             md[2][barcode]['ENV_FEATURE'] = 'animal-associated habitat'
-            md[2][barcode]['DEPTH'] = 0
+            md[2][barcode]['DEPTH'] = not_applicable
             md[2][barcode]['DESCRIPTION'] = 'American Gut Project' + \
                 ' Animal sample'
             md[2][barcode]['DNA_EXTRACTED'] = 'Yes'
@@ -792,7 +816,7 @@ class KniminAccess(object):
                     try:
                         md[1][barcode][field] = float(md[1][barcode][field])
                     except ValueError:
-                        md[1][barcode][field] = 'Unspecified'
+                        md[1][barcode][field] = not_provided
 
                 # Correct height units
                 if responses['HEIGHT_UNITS'] == 'inches' and \
@@ -815,7 +839,9 @@ class KniminAccess(object):
                     md[1][barcode]['BMI'] = md[1][barcode]['WEIGHT_KG'] / \
                         (md[1][barcode]['HEIGHT_CM']/100)**2
                 else:
-                    md[1][barcode]['BMI'] = 'Unspecified'
+                    md[1][barcode]['BMI'] = not_provided
+                    md[1][barcode]['HEIGHT_CM'] = not_provided
+                    md[1][barcode]['WEIGHT_KG'] = not_provided
 
                 # Get age in years (int) and remove birth month
                 if responses['BIRTH_MONTH'] != 'Unspecified' and \
@@ -829,14 +855,16 @@ class KniminAccess(object):
                                             bc_info['sample_date'].day))
                     md[1][barcode]['AGE_YEARS'] = int(age_in_month / 12.0)
                 else:
-                    md[1][barcode]['AGE_YEARS'] = 'Unspecified'
+                    md[1][barcode]['AGE_YEARS'] = not_provided
+                    md[1][barcode]['BIRTH_MONTH'] = not_provided
+                    md[1][barcode]['BIRTH_YEAR'] = not_provided
 
                 # GENDER to SEX
                 sex = md[1][barcode]['GENDER']
                 if sex is not None:
                     sex = sex.lower()
                 else:
-                    sex = 'Unspecified'
+                    sex = not_provided
                 md[1][barcode]['SEX'] = sex
 
                 # convenience variable
@@ -854,6 +882,9 @@ class KniminAccess(object):
                 md[1][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'Yes'
                 md[1][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
                 md[1][barcode]['HOST_COMMON_NAME'] = 'human'
+                md[1][barcode]['DEPTH'] = not_applicable
+                md[1][barcode]['ALTITUDE'] = not_applicable
+                md[1][barcode]['HAS_PHYSICAL_SPECIMEN'] = not_applicable
 
                 # Sample-dependent information
                 zipcode = md[1][barcode]['ZIP_CODE'].upper()
@@ -872,7 +903,7 @@ class KniminAccess(object):
                         bc_info['sample_time'].strftime('%H:%M')
                 else:
                     # If no time data, show unspecified and default to midnight
-                    md[1][barcode]['COLLECTION_TIME'] = 'Unspecified'
+                    md[1][barcode]['COLLECTION_TIME'] = not_provided
                     bc_info['sample_time'] = time(0, 0)
 
                 md[1][barcode]['COLLECTION_TIMESTAMP'] = datetime.combine(
@@ -889,8 +920,8 @@ class KniminAccess(object):
 
                 # Convert finer grained IBD to coarser grained
                 ibd = md[1][barcode].get('IBD_DIAGNOSIS_REFINED',
-                                         'Unspecified')
-                if ibd != 'Unspecified':
+                                         not_provided)
+                if ibd != not_provided:
                     if ibd in {"Ileal Crohn's Disease",
                                "Colonic Crohn's Disease",
                                "Ileal and Colonic Crohn's Disease"}:
@@ -900,11 +931,11 @@ class KniminAccess(object):
 
                 # Add categorization columns
                 md[1][barcode]['ALCOHOL_CONSUMPTION'] = categorize_etoh(
-                    md[1][barcode]['ALCOHOL_FREQUENCY'])
+                    md[1][barcode]['ALCOHOL_FREQUENCY'], not_provided)
                 md[1][barcode]['BMI_CAT'] = categorize_bmi(
-                    md[1][barcode]['BMI'])
+                    md[1][barcode]['BMI'], not_provided)
                 md[1][barcode]['BMI_CORRECTED'] = correct_bmi(
-                    md[1][barcode]['BMI'])
+                    md[1][barcode]['BMI'], not_provided)
                 md[1][barcode]['COLLECTION_SEASON'] = season_lookup[
                     bc_info['sample_date'].month]
                 state = md[1][barcode]['STATE']
@@ -914,11 +945,11 @@ class KniminAccess(object):
                     md[1][barcode]['ECONOMIC_REGION'] = \
                         regions_by_state[state]['Economic']
                 except KeyError:
-                    md[1][barcode]['CENSUS_REGION'] = 'Unspecified'
-                    md[1][barcode]['ECONOMIC_REGION'] = 'Unspecified'
+                    md[1][barcode]['CENSUS_REGION'] = not_provided
+                    md[1][barcode]['ECONOMIC_REGION'] = not_provided
                 md[1][barcode]['SUBSET_AGE'] = \
                     19 < md[1][barcode]['AGE_YEARS'] < 70 and \
-                    not md[1][barcode]['AGE_YEARS'] == 'Unspecified'
+                    not md[1][barcode]['AGE_YEARS'] == not_provided
                 md[1][barcode]['SUBSET_DIABETES'] = \
                     (md[1][barcode]['DIABETES'] ==
                         'I do not have this condition')
@@ -929,7 +960,7 @@ class KniminAccess(object):
                      'I have not taken antibiotics in the past year.')
                 md[1][barcode]['SUBSET_BMI'] = \
                     18.5 <= md[1][barcode]['BMI'] < 30 and \
-                    not md[1][barcode]['BMI'] == 'Unspecified'
+                    not md[1][barcode]['BMI'] == not_provided
                 md[1][barcode]['SUBSET_HEALTHY'] = all([
                     md[1][barcode]['SUBSET_AGE'],
                     md[1][barcode]['SUBSET_DIABETES'],
@@ -937,22 +968,22 @@ class KniminAccess(object):
                     md[1][barcode]['SUBSET_ANTIBIOTIC_HISTORY'],
                     md[1][barcode]['SUBSET_BMI']])
                 md[1][barcode]['COLLECTION_MONTH'] = month_str_lookup.get(
-                    bc_info['sample_date'].month, 'Unspecified')
+                    bc_info['sample_date'].month, not_provided)
                 md[1][barcode]['AGE_CORRECTED'] = correct_age(
                     md[1][barcode]['AGE_YEARS'], md[1][barcode]['HEIGHT_CM'],
                     md[1][barcode]['WEIGHT_KG'],
-                    md[1][barcode]['ALCOHOL_CONSUMPTION'])
+                    md[1][barcode]['ALCOHOL_CONSUMPTION'], not_provided)
                 md[1][barcode]['AGE_CAT'] = categorize_age(
-                    md[1][barcode]['AGE_CORRECTED'])
+                    md[1][barcode]['AGE_CORRECTED'], not_provided)
 
                 # make sure conversions are done
-                if md[1][barcode]['WEIGHT_KG'] != 'Unspecified':
+                if md[1][barcode]['WEIGHT_KG'] != not_provided:
                     md[1][barcode]['WEIGHT_KG'] = int(
                         md[1][barcode]['WEIGHT_KG'])
-                if md[1][barcode]['HEIGHT_CM'] != 'Unspecified':
+                if md[1][barcode]['HEIGHT_CM'] != not_provided:
                     md[1][barcode]['HEIGHT_CM'] = int(
                         md[1][barcode]['HEIGHT_CM'])
-                if md[1][barcode]['BMI'] != 'Unspecified':
+                if md[1][barcode]['BMI'] != not_provided:
                     md[1][barcode]['BMI'] = '%.2f' % md[1][barcode]['BMI']
 
                 # Get rid of columns not wanted for pulldown
@@ -969,6 +1000,9 @@ class KniminAccess(object):
                 if unknown_external:
                     md[1][barcode].update(external.get(md[1][barcode][
                         'SURVEY_ID'], unknown_external))
+
+                self._sync_with_data_dictionary(md[1][barcode], not_provided,
+                                                not_applicable)
             except Exception as e:
                 # Add barcode to error and remove from metadata info
                 if isinstance(e, SSLError):
@@ -978,6 +1012,96 @@ class KniminAccess(object):
                 del md[1][barcode]
 
         return md, errors
+
+    def _sync_with_data_dictionary(self, barcode_metadata, not_provided,
+                                   not_applicable):
+        """Remap responses where necessary to conform to submitted data dict
+
+        Parameters
+        ----------
+        barcode_metadata : dict
+            A dict of the metadata responses associated with the barcode.
+        not_provided : str
+            A string to use for values that are not provided.
+        not_applicable : str
+            A string to use for values that are not applicable.
+
+        Notes
+        -----
+        This method operates in place
+        """
+        boolean_remap = {
+            'pregnant', 'public', 'roommates_in_study',
+            'seasonal_allergies', 'softener',
+            'breastmilk_formula_ensure',
+            'specialized_diet_exclude_dairy',
+            'specialized_diet_exclude_nightshades',
+            'specialized_diet_exclude_refined_sugars',
+            'specialized_diet_fodmap', 'specialized_diet_halaal',
+            'specialized_diet_i_do_not_eat_a_specialized_diet',
+            'specialized_diet_kosher',
+            'specialized_diet_modified_paleo_diet',
+            'specialized_diet_other_restrictions_not_described_here',
+            'specialized_diet_paleodiet_or_primal_diet',
+            'specialized_diet_raw_food_diet',
+            'specialized_diet_unspecified',
+            'specialized_diet_westenprice_or_other_lowgrain_low_processed_food_diet',  # noqa
+            'subset_age', 'subset_antibiotic_history', 'subset_bmi',
+            'subset_diabetes', 'subset_healthy', 'subset_ibd',
+            'tonsils_removed', 'multivitamin', 'nail_biter',
+            'non_food_allergies_beestings',
+            'non_food_allergies_drug_eg_penicillin',
+            'non_food_allergies_pet_dander',
+            'non_food_allergies_poison_ivyoak', 'non_food_allergies_sun',
+            'non_food_allergies_unspecified', 'other_supplement_frequency',
+            'pets_other', 'acne_medication', 'acne_medication_otc',
+            'alcohol_consumption', 'alcohol_types_beercider',
+            'alcohol_types_red_wine', 'alcohol_types_sour_beers',
+            'alcohol_types_spiritshard_alcohol',
+            'alcohol_types_unspecified', 'alcohol_types_white_wine',
+            'allergic_to_i_have_no_food_allergies_that_i_know_of',
+            'allergic_to_other', 'allergic_to_peanuts',
+            'allergic_to_shellfish', 'allergic_to_tree_nuts',
+            'allergic_to_unspecified', 'appendix_removed',
+            'assigned_from_geo', 'cat',
+            'chickenpox', 'csection', 'dna_extracted', 'dog',
+            'has_physical_specimen', 'lactose', 'livingwith',
+            'lowgrain_diet_type', 'mental_illness',
+            'consume_animal_products_abx',
+            'mental_illness_type_anorexia_nervosa',
+            'mental_illness_type_bipolar_disorder',
+            'mental_illness_type_bulimia_nervosa',
+            'mental_illness_type_depression',
+            'mental_illness_type_ptsd_posttraumatic_stress_disorder',
+            'mental_illness_type_schizophrenia',
+            'mental_illness_type_substance_abuse',
+            'mental_illness_type_unspecified'}
+
+        boolean_remap_vals = {'yes': u'true',
+                              'no': u'false',
+                              'false': u'false',
+                              'true': u'true',
+                              'not sure': u'Not sure'}
+
+        # values in this category need to be transformed except this one
+        boolean_remap_vals['i eat both solid food and formula/breast milk'] = \
+                'I eat both solid food and formula/breast milk'
+
+        null_remap = {'not applicable': not_applicable,
+                      'not provided': not_provided,
+                      'unspecified': not_provided}
+
+        for k, v in barcode_metadata.items():
+            v = str(v).lower()
+            if v in null_remap:
+                new_v = null_remap[v]
+                barcode_metadata[k] = new_v
+
+            elif k.lower() in boolean_remap:
+                new_v = boolean_remap_vals.get(v)
+                if new_v is None:
+                    raise ValueError("Unexpected value, %s -> %s" % (k, v))
+                barcode_metadata[k] = new_v
 
     def format_environmental(self, barcodes):
         """Format the environemntal data pulldown metadata
@@ -1174,7 +1298,9 @@ class KniminAccess(object):
                     blanks_copy['HOST_SUBJECT_ID'] = blank
                     rows.append([blank] + [blanks_copy[h] for h in headers])
 
-            current_metadata = pd.DataFrame(rows, columns=['sample_name'] + headers)
+            qiita_max = 63  # maximum column width in qiita
+            headers_ = [h[:qiita_max] for h in headers]
+            current_metadata = pd.DataFrame(rows, columns=['sample_name'] + headers_)
             metadata[survey] = current_metadata.to_csv(sep=b'\t',
                                                        encoding='utf-8',
                                                        index=False)

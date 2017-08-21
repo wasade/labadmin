@@ -12,6 +12,8 @@ from knimin.lib.constants import ebi_remove
 class TestDataAccess(TestCase):
     ext_survey_fp = join(dirname(realpath(__file__)), '..', '..', 'tests',
                          'data', 'external_survey_data.csv')
+    data_dict_fp = join(dirname(realpath(__file__)), '..', '..', 'tests',
+                        'data', 'table_s2.xlsx')
 
     def setUp(self):
         # Make sure vioscreen survey exists in DB
@@ -24,6 +26,113 @@ class TestDataAccess(TestCase):
         db._clear_table('external_survey_answers', 'ag')
         db._revert_ready(['000023299'])
 
+    def test_sync_with_data_dictionary(self):
+        d = {'some_category': u'some response',
+             'another_category': 123.0,
+             'chickenpox': u'yes',
+             'consume_animal_products_abx': u'No',
+             'csection': u'not sure',
+             'dog': u'Yes',
+             'cat': True,
+             'lactose': False,
+             'other_supplement_frequency': 'Unspecified',
+             'lowgrain_diet_type': u'no'}
+        exp = {'some_category': u'some response',
+               'another_category': 123.0,
+               'chickenpox': u'true',
+               'consume_animal_products_abx': u'false',
+               'csection': u'Not sure',
+               'dog': u'true',
+               'cat': u'true',
+               'lactose': u'false',
+               'other_supplement_frequency': u'Not provided',
+               'lowgrain_diet_type': u'false'}
+        db._sync_with_data_dictionary(d, 'Not provided', 'Not applicable')
+        self.assertEqual(d, exp)
+
+    def test_pulldown_data_dictionary_check(self):
+        with open(self.ext_survey_fp, 'rU') as f:
+            obs = db.store_external_survey(
+                f, 'Vioscreen', separator=',', survey_id_col='SubjectId',
+                trim='-160')
+
+        dd = pd.ExcelFile(self.data_dict_fp)
+        primary = dd.parse("Primary Survey")
+        vioscreen = dd.parse('Vioscreen FFQ')
+
+        obs, f = db.pulldown(['000029429', '000018046', '000023299',
+                              '000023300', '000010863', '000021994',
+                              '000010863', '000023772', '000023714',
+                              '000001166', '000014401', '000014889',
+                              '000041833', '000021693',
+                              '000023576', '000013287',
+                              '000001586', '000038207'],
+                             external=['Vioscreen'])
+        md = pd.read_csv(
+            StringIO(obs[1]), delimiter='\t', dtype=str, encoding='utf-8')
+        md.columns = [c.lower() for c in md.columns]
+
+        # in data dictionary but not in metadata pulldown
+        missing_headers = []
+        for c in primary['Column header']:
+            if c not in md.columns:
+                missing_headers.append(c)
+        for c in vioscreen['Column header']:
+            if c not in md.columns:
+                missing_headers.append(c)
+
+        if missing_headers:
+            self.fail("The following headers are missing: %s"
+                      % ','.join(missing_headers))
+
+        # in pulldown but not in data dictionary
+        missing_headers = []
+        no_data = []
+
+        # the specific responses (e.g., alcohol_types_beercider) are stored instead
+        ignore = {'alcohol_types', 'allergic_to', 'non_food_allergies',
+                  'specialized_diet', 'mental_illness_type'}
+        for c in md.columns:
+            observed_set = set(md[c].unique())
+            if observed_set == {'Missing: Not provided', 'Not applicable'}:
+                no_data.append(c)
+            elif c.startswith('vioscreen'):
+                if c not in vioscreen['Column header'].values and c not in ignore:
+                    missing_headers.append(c)
+            else:
+                if c not in primary['Column header'].values and c not in ignore:
+                    missing_headers.append(c)
+        if missing_headers:
+            self.fail("The following headers are unknown: %s"
+                      % ','.join(missing_headers))
+
+        boolean_issues = []
+        unexp_values = []
+        for idx, row in primary.iterrows():
+            if isinstance(row['Expected values'], (str, unicode)) and '|' in row['Expected values']:
+                response_set = {s.strip().strip('"').strip("'") for s in row['Expected values'].split('|')}
+                response_set.add("Not provided")
+                response_set.add('Not applicable')
+                bv = row['Blank value']
+                if isinstance(bv, str):
+                    response_set.add(bv.strip().strip("'").strip('"'))
+
+                observed_set = set(md[row['Column header']].unique())
+                if not observed_set.issubset(response_set):
+                    if (observed_set - response_set) == {'Yes', 'No'}:
+                        boolean_issues.append(row['Column header'])
+                    else:
+                        unexp_values.append(row['Column header'])
+
+        if boolean_issues:
+            self.fail("The following headers had boolean issues: %s"
+                      % ','.join(boolean_issues))
+        if unexp_values:
+            for x in unexp_values:
+                print(md[x].value_counts())
+            self.fail("The following headers had unexpected values: %s"
+                      % ','.join(unexp_values))
+
     def test_pulldown_third_party(self):
         # Add survey answers
         with open(self.ext_survey_fp, 'rU') as f:
@@ -34,7 +143,7 @@ class TestDataAccess(TestCase):
 
         barcodes = ['000029429', '000018046', '000023299', '000023300']
         # Test without third party
-        obs, _ = db.pulldown(barcodes)
+        obs, failures = db.pulldown(barcodes)
 
         # Parse the metadata into a pandas dataframe to test some invariants
         # This tests does not ensure that the columns have the exact value
@@ -51,7 +160,7 @@ class TestDataAccess(TestCase):
         freq_accepted_vals = {
             'Never', 'Rarely (a few times/month)',
             'Regularly (3-5 times/week)', 'Occasionally (1-2 times/week)',
-            'Unspecified', 'Daily'}
+            'Not provided', 'Daily'}
 
         freq_cols = ['ALCOHOL_FREQUENCY', 'PROBIOTIC_FREQUENCY',
                      'ONE_LITER_OF_WATER_A_DAY_FREQUENCY', 'POOL_FREQUENCY',
@@ -63,10 +172,10 @@ class TestDataAccess(TestCase):
 
         # This astype is making sure that the values in the BMI column are
         # values that can be casted to float.
-        survey_df[survey_df.BMI != 'Unspecified'] .BMI.astype(float)
+        survey_df[survey_df.BMI != 'Not provided'] .BMI.astype(float)
 
         body_product_values = set(survey_df.BODY_PRODUCT)
-        self.assertTrue(all([x.startswith('UBERON') or x == 'Unspecified'
+        self.assertTrue(all([x.startswith('UBERON') or x == 'Not provided'
                              for x in body_product_values]))
 
         survey = obs[1]

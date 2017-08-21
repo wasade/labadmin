@@ -199,14 +199,14 @@ def make_verification_code(vercode_length=5):
     return choice(KIT_VERCODE_NOZEROS) + x
 
 
-def categorize_age(x):  # noqa
-    if x == 'Unspecified':
-        return 'Unspecified'
+def categorize_age(x, null_val):  # noqa
+    if x == null_val:
+        return x
 
     # Explicit conversion needed in case string passed in
     age = float(x)
     if age < 0:
-        age_cat = 'Unspecified'
+        age_cat = null_val
     elif age < 3:
         age_cat = "baby"
     elif age < 13:
@@ -226,17 +226,17 @@ def categorize_age(x):  # noqa
     elif age < 123:
         age_cat = "70+"
     else:
-        age_cat = 'Unspecified'
+        age_cat = null_val
 
     return age_cat
 
 
-def correct_age(age, height, weight, etoh):
+def correct_age(age, height, weight, etoh, null_val):
     """Infers incorrect ages and incorrectly classified babies"""
     # Make sure all required data exists
-    if any([age == 'Unspecified', height == 'Unspecified',
-            weight == 'Unspecified', etoh == 'Unspecified']):
-        return 'Unspecified'
+    if any([age == null_val, height == null_val,
+            weight == null_val, etoh == null_val]):
+        return null_val
 
     # Explicit conversion needed in case string passed in
     new_age = float(age)
@@ -246,34 +246,34 @@ def correct_age(age, height, weight, etoh):
     if new_age >= 3 and new_age < 123:
         return new_age
     if new_age < 0 or new_age >= 123:
-        return 'Unspecified'
+        return null_val
 
     # Checks the logic for height (in cm)
     if new_height > 91.4:
-        return 'Unspecified'
+        return null_val
     # Checks the logic for weight (in kg)
     if new_weight > 16.3:
-        return 'Unspecified'
+        return null_val
     # Checks the logic for alcohol
     if etoh != 'Never':
-        return 'Unspecified'
+        return null_val
     return new_age
 
 
-def correct_bmi(bmi):
-    if bmi == 'Unspecified':
+def correct_bmi(bmi, null_val):
+    if bmi == null_val:
         return bmi
 
     bmi = float(bmi)
     if bmi < 8 or bmi >= 80:
-        return 'Unspecified'
+        return null_val
     return '%.2f' % bmi
 
 
-def categorize_etoh(x):
+def categorize_etoh(x, null_val):
     if x == 'Never':
         etoh_cat = 'No'
-    elif x == 'Unspecified':
+    elif x == null_val:
         etoh_cat = x
     elif isinstance(x, str):
         etoh_cat = "Yes"
@@ -283,14 +283,14 @@ def categorize_etoh(x):
     return etoh_cat
 
 
-def categorize_bmi(x):
-    if x == 'Unspecified':
-        return 'Unspecified'
+def categorize_bmi(x, null_val):
+    if x == null_val:
+        return x
 
     # Explicit conversion needed in case string passed in
     bmi = float(x)
     if bmi < 8:
-        bmi_cat = 'Unspecified'
+        bmi_cat = null_val
     elif bmi < 18.5:
         bmi_cat = 'Underweight'
     elif bmi < 25:
@@ -300,7 +300,7 @@ def categorize_bmi(x):
     elif bmi < 80:
         bmi_cat = 'Obese'
     else:
-        bmi_cat = 'Unspecified'
+        bmi_cat = null_val
 
     return bmi_cat
 
