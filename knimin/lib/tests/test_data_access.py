@@ -50,7 +50,7 @@ class TestDataAccess(TestCase):
         db._sync_with_data_dictionary(d, 'Not provided', 'Not applicable')
         self.assertEqual(d, exp)
 
-    def test_pulldown_data_dictionary_check(self):
+    def test_pulldown_data_dictionary_check(self): # noqa: max-complexity(20)
         with open(self.ext_survey_fp, 'rU') as f:
             obs = db.store_external_survey(
                 f, 'Vioscreen', separator=',', survey_id_col='SubjectId',
@@ -89,7 +89,8 @@ class TestDataAccess(TestCase):
         missing_headers = []
         no_data = []
 
-        # the specific responses (e.g., alcohol_types_beercider) are stored instead
+        # the specific responses (e.g., alcohol_types_beercider) are stored
+        # instead
         ignore = {'alcohol_types', 'allergic_to', 'non_food_allergies',
                   'specialized_diet', 'mental_illness_type'}
         for c in md.columns:
@@ -97,10 +98,12 @@ class TestDataAccess(TestCase):
             if observed_set == {'Missing: Not provided', 'Not applicable'}:
                 no_data.append(c)
             elif c.startswith('vioscreen'):
-                if c not in vioscreen['Column header'].values and c not in ignore:
+                if c not in vioscreen['Column header'].values \
+                        and c not in ignore:
                     missing_headers.append(c)
             else:
-                if c not in primary['Column header'].values and c not in ignore:
+                if c not in primary['Column header'].values \
+                        and c not in ignore:
                     missing_headers.append(c)
         if missing_headers:
             self.fail("The following headers are unknown: %s"
@@ -109,8 +112,10 @@ class TestDataAccess(TestCase):
         boolean_issues = []
         unexp_values = []
         for idx, row in primary.iterrows():
-            if isinstance(row['Expected values'], (str, unicode)) and '|' in row['Expected values']:
-                response_set = {s.strip().strip('"').strip("'") for s in row['Expected values'].split('|')}
+            if isinstance(row['Expected values'], (str, unicode)) \
+                    and '|' in row['Expected values']:
+                response_set = {s.strip().strip('"').strip("'")
+                                for s in row['Expected values'].split('|')}
                 response_set.add("Not provided")
                 response_set.add('Not applicable')
                 bv = row['Blank value']
@@ -128,8 +133,6 @@ class TestDataAccess(TestCase):
             self.fail("The following headers had boolean issues: %s"
                       % ','.join(boolean_issues))
         if unexp_values:
-            for x in unexp_values:
-                print(md[x].value_counts())
             self.fail("The following headers had unexpected values: %s"
                       % ','.join(unexp_values))
 

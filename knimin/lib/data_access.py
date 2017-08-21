@@ -1085,7 +1085,7 @@ class KniminAccess(object):
 
         # values in this category need to be transformed except this one
         boolean_remap_vals['i eat both solid food and formula/breast milk'] = \
-                'I eat both solid food and formula/breast milk'
+            'I eat both solid food and formula/breast milk'
 
         null_remap = {'not applicable': not_applicable,
                       'not provided': not_provided,
@@ -1300,7 +1300,8 @@ class KniminAccess(object):
 
             qiita_max = 63  # maximum column width in qiita
             headers_ = [h[:qiita_max] for h in headers]
-            current_metadata = pd.DataFrame(rows, columns=['sample_name'] + headers_)
+            current_metadata = pd.DataFrame(rows,
+                                            columns=['sample_name'] + headers_)
             metadata[survey] = current_metadata.to_csv(sep=b'\t',
                                                        encoding='utf-8',
                                                        index=False)
