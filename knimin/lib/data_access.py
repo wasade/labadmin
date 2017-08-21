@@ -10,6 +10,7 @@ from datetime import datetime, time, timedelta
 from requests.exceptions import SSLError
 import json
 import re
+import pandas as pd
 
 from bcrypt import hashpw, gensalt
 from future.utils import viewitems
@@ -1152,28 +1153,31 @@ class KniminAccess(object):
             # Remove the ebi prohibited columns
             headers = headers.difference(ebi_remove)
             headers = sorted(headers)
-            survey_md = [''.join(['sample_name\t', '\t'.join(headers)])]
 
+            rows = []
             for barcode, shortnames_answers in sorted(bc_responses.items()):
                 barcodes_seen.add(barcode)
                 oa_hold = [barcode]
                 for h in headers:
                     # Take care of retired questions not having an answer
-                    answer = shortnames_answers.get(h, 'Unspecified')
+                    answer = shortnames_answers.get(h, 'Not provided')
                     # Convert everything to utf-8 unicode for standardization
                     converted = self._unicode_convert(answer)
                     oa_hold.append(converted)
-                survey_md.append('\t'.join(oa_hold))
+                rows.append(oa_hold)
+
             if survey == 1 and blanks:
                 # only add blanks to human survey sample data
                 for blank in blanks:
                     blanks_copy = copy(blanks_values)
                     blanks_copy['ANONYMIZED_NAME'] = blank
                     blanks_copy['HOST_SUBJECT_ID'] = blank
-                    survey_md.append(
-                        '\t'.join([blank] + [blanks_copy[h]
-                                             for h in headers]))
-            metadata[survey] = '\n'.join(survey_md).encode('utf-8')
+                    rows.append([blank] + [blanks_copy[h] for h in headers])
+
+            current_metadata = pd.DataFrame(rows, columns=['sample_name'] + headers)
+            metadata[survey] = current_metadata.to_csv(sep=b'\t',
+                                                       encoding='utf-8',
+                                                       index=False)
 
         if len(env_barcodes) > 0:
             all_results['env'], err = self.format_environmental(env_barcodes)
