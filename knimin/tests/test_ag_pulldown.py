@@ -1,7 +1,11 @@
 from unittest import main
+import csv
 import os
 from os.path import dirname, realpath, join
 from tempfile import NamedTemporaryFile
+import pandas as pd
+import pandas.util.testing as pdt
+from StringIO import StringIO
 
 from tornado.escape import url_escape
 
@@ -143,8 +147,7 @@ class testAGPulldownDLHandler(TestHandlerBase):
                                            '000063380', '000063381',
                                            '000006616', '000030821',
                                            '000030822', '000030823',
-                                           '000069020', '000069021'
-                                           '000069022'],
+                                           '000069020', '000069021'],
                               'blanks': [],
                               'external': [],
                               'selected_ag_surveys': [-1, -2, -3, -4, -5],
@@ -166,7 +169,19 @@ class testAGPulldownDLHandler(TestHandlerBase):
         truth = extract_zip(join(dirname(realpath(__file__)), 'data',
                                  'results_multiplesurvey_barcodes.zip'))
 
-        self.assertEqual(sneak_files(result), sneak_files(truth))
+        for a, b in zip(sneak_files(result, -1), sneak_files(truth, -1)):
+            self.assertEqual(sorted(a.keys()), sorted(b.keys()))
+
+            for k in a:
+                if k == 'failures.txt':
+                    self.assertEqual(a[k], b[k])
+                else:
+                    a_ = pd.read_csv(StringIO(a[k]),
+                                     sep='\t', encoding='iso-8859-1', quoting=csv.QUOTE_NONE, dtype=unicode).set_index('sample_name')
+                    b_ = pd.read_csv(StringIO(b[k]),
+                                     sep='\t', encoding='iso-8859-1', quoting=csv.QUOTE_NONE, dtype=unicode).set_index('sample_name')
+                    self.assertEqual(sorted(a_.columns), sorted(b_.columns))
+                    pdt.assert_frame_equal(a_, b_[a_.columns])
 
     def test_post_select_surveys(self):
         self.mock_login_admin()

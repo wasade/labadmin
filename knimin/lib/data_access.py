@@ -781,7 +781,33 @@ class KniminAccess(object):
             unknown_external = {k: not_provided
                                 for k in external[external.keys()[0]].keys()}
 
+        # personal microbiome (id 5)
+        pm_remap = {'yes': 'true', 'no': 'false'}
+        for barcode, responses in md[5].items():
+            for c in md[5][barcode]:
+                if c.startswith('PM_'):
+                    v = md[5][barcode][c]
+                    md[5][barcode][c] = pm_remap.get(v.lower(), v)
+
+        # surfers (id 4)
+        surfers_remap = {'yes': 'true', 'no': 'false'}
+        for barcode, responses in md[4].items():
+            for c in md[4][barcode]:
+                if c.startswith('SURF_'):
+                    v = md[4][barcode][c]
+                    md[4][barcode][c] = surfers_remap.get(v.lower(), v)
+
+
+        # Fermentation survey (id 3)
+        ferment_remap = {'yes': 'true', 'no': 'false'}
+        for barcode, responses in md[3].items():
+            for c in md[3][barcode]:
+                if c.startswith('FERMENTED'):
+                    v = md[3][barcode][c]
+                    md[3][barcode][c] = ferment_remap.get(v.lower(), v)
+
         # Pet survey (id 2)
+        animal_remap = {'yes': 'true', 'no': 'false'}
         for barcode, responses in md[2].items():
             # Invariant information
             md[2][barcode]['ANONYMIZED_NAME'] = barcode
@@ -789,15 +815,27 @@ class KniminAccess(object):
             # md[2][barcode]['HOST_TAXID'] = ????
             md[2][barcode]['TITLE'] = 'American Gut Project'
             md[2][barcode]['ALTITUDE'] = not_applicable
-            md[2][barcode]['ASSIGNED_FROM_GEO'] = 'Yes'
+            md[2][barcode]['ASSIGNED_FROM_GEO'] = 'true'
             md[2][barcode]['ENV_BIOME'] = 'dense settlement biome'
             md[2][barcode]['ENV_FEATURE'] = 'animal-associated habitat'
             md[2][barcode]['DEPTH'] = not_applicable
             md[2][barcode]['DESCRIPTION'] = 'American Gut Project' + \
                 ' Animal sample'
-            md[2][barcode]['DNA_EXTRACTED'] = 'Yes'
-            md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'Yes'
+            md[2][barcode]['DNA_EXTRACTED'] = 'true'
+            md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
             md[2][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
+
+            # remap the yes/no questions
+            for c in ('FOOD_SOURCE_HUMAN_FOOD',
+                      'FOOD_SOURCE_PET_STORE_FOOD',
+                      'FOOD_SOURCE_WILD_FOOD',
+                      'FOOD_SOURCE_UNSPECIFIED',
+                      'FOOD_SPECIAL_ORGANIC',
+                      'FOOD_SPECIAL_UNSPECIFIED',
+                      'FOOD_SPECIAL_GRAIN_FREE'):
+                if c in md[2][barcode]:
+                    v = md[2][barcode][c]
+                    md[2][barcode][c] = animal_remap.get(v.lower(), v)
 
             specific_info = barcode_info[barcode[:9]]
             zipcode = specific_info['zip'].upper()
@@ -875,11 +913,11 @@ class KniminAccess(object):
                 md[1][barcode]['HOST_TAXID'] = 9606
                 md[1][barcode]['SCIENTIFIC_NAME'] = 'Homo sapiens'
                 md[1][barcode]['TITLE'] = 'American Gut Project'
-                md[1][barcode]['ASSIGNED_FROM_GEO'] = 'Yes'
+                md[1][barcode]['ASSIGNED_FROM_GEO'] = 'true'
                 md[1][barcode]['ENV_BIOME'] = 'dense settlement biome'
                 md[1][barcode]['ENV_FEATURE'] = 'human-associated habitat'
-                md[1][barcode]['DNA_EXTRACTED'] = 'Yes'
-                md[1][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'Yes'
+                md[1][barcode]['DNA_EXTRACTED'] = 'true'
+                md[1][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
                 md[1][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
                 md[1][barcode]['HOST_COMMON_NAME'] = 'human'
                 md[1][barcode]['DEPTH'] = not_applicable
@@ -1010,6 +1048,12 @@ class KniminAccess(object):
                 else:
                     errors[barcode] = str(e.message.encode('utf-8'))
                 del md[1][barcode]
+
+        for survey in md:
+            for barcode, responses in md[survey].items():
+                for c, v in md[survey][barcode].items():
+                    if isinstance(v, (str, unicode)) and v.lower() == 'unspecified':
+                        md[survey][barcode][c] = not_provided
 
         return md, errors
 
@@ -1145,8 +1189,8 @@ class KniminAccess(object):
                 md[barcode].update(env_lookup[env])
                 # Invariant information
                 md[barcode]['TITLE'] = 'American Gut Project'
-                md[barcode]['ASSIGNED_FROM_GEO'] = 'Yes'
-                md[barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'Yes'
+                md[barcode]['ASSIGNED_FROM_GEO'] = 'true'
+                md[barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
                 md[barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
 
                 # Barcode specific information

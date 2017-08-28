@@ -2,6 +2,8 @@ from tornado.web import authenticated
 from future.utils import viewitems
 from StringIO import StringIO
 import pandas as pd
+import csv
+import numpy as np
 
 from knimin.handlers.base import BaseHandler
 from knimin import db
@@ -99,7 +101,22 @@ class AGPulldownDLHandler(BaseHandler):
                 # transform each survey into a pandas dataframe for later merge
                 # read all columns as string to avoid unintened conversions,
                 # like cutting leading zeros of barcodes
-                pd_meta = pd.read_csv(StringIO(meta), sep="\t", dtype=str)
+
+                f = open('/tmp/foo%d' % survey, 'w')
+                f.write(meta)
+                f.close()
+
+                pd_meta = pd.read_csv(StringIO(meta), sep="\t",
+                                      encoding='iso-8859-1',
+                                      quoting=csv.QUOTE_NONE,
+                                      dtype=unicode)
+
+                # these are replicated and useless anyway
+                if 'ALTITUDE' in pd_meta.columns:
+                    pd_meta.drop(['ALTITUDE'], axis=1, inplace=True)
+                if 'DEPTH' in pd_meta.columns:
+                    pd_meta.drop(['DEPTH'], axis=1, inplace=True)
+
                 # reset the index to barcodes = here sample_name
                 pd_meta.set_index('sample_name', inplace=True)
                 results_as_pd.append(pd_meta)
@@ -108,9 +125,23 @@ class AGPulldownDLHandler(BaseHandler):
         if self.get_argument('merged', default='False') == 'True':
             pd_all = pd.DataFrame()
             if len(results_as_pd) > 0:
+                cols = set()
+                for df in results_as_pd:
+                    if set(df.columns).intersection(cols):
+                        df.drop(set(df.columns).intersection(cols), axis=1, inplace=True)
+                    cols.update(set(df.columns))
                 pd_all = pd.concat(results_as_pd, join='outer', axis=1)
+                pd_all['DEPTH'] = 'Not applicable'
+                pd_all['ALTITUDE'] = 'Not applicable'
+                pd_all['HAS_PHYSICAL_SPECIMEN'] = 'Not applicable'
+                pd_all.fillna('Not provided', inplace=True)
+                if 'ASSIGNED_FROM_GEO.1' in pd_all.columns:
+                    pd_all.drop(['ASSIGNED_FROM_GEO.1'], axis=1, inplace=True)
+
                 meta_zip.append('surveys_merged_md.txt',
                                 pd_all.to_csv(sep='\t',
+                                              quoting=csv.QUOTE_NONE,
+                                              encoding='iso-8859-1',
                                               index_label='sample_name'))
 
         # write out zip file

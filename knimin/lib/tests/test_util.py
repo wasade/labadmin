@@ -51,95 +51,113 @@ class UtilTests(TestCase):
         self.assertEqual(obs, exp)
 
     def test_categorize_age(self):
-        self.assertEqual('Unspecified', categorize_age(-2))
-        self.assertEqual('baby', categorize_age(0))
-        self.assertEqual('baby', categorize_age(2.9))
-        self.assertEqual('child', categorize_age(3))
-        self.assertEqual('child', categorize_age(12.9))
-        self.assertEqual('teen', categorize_age(13))
-        self.assertEqual('teen', categorize_age(19.9))
-        self.assertEqual('20s', categorize_age(20))
-        self.assertEqual('20s', categorize_age(29.9))
-        self.assertEqual('30s', categorize_age(30))
-        self.assertEqual('30s', categorize_age(39.9))
-        self.assertEqual('40s', categorize_age(40))
-        self.assertEqual('40s', categorize_age(49.9))
-        self.assertEqual('50s', categorize_age(50))
-        self.assertEqual('50s', categorize_age(59.9))
-        self.assertEqual('60s', categorize_age(60))
-        self.assertEqual('60s', categorize_age(69.9))
-        self.assertEqual('70+', categorize_age(70))
-        self.assertEqual('70+', categorize_age(122))
-        self.assertEqual('Unspecified', categorize_age(123))
-        self.assertEqual('Unspecified', categorize_age(123564))
-        self.assertEqual('Unspecified', categorize_age('Unspecified'))
+        self.assertEqual('Unspecified', categorize_age(-2, 'Unspecified'))
+        self.assertEqual('baby', categorize_age(0, 'Unspecified'))
+        self.assertEqual('baby', categorize_age(2.9, 'Unspecified'))
+        self.assertEqual('child', categorize_age(3, 'Unspecified'))
+        self.assertEqual('child', categorize_age(12.9, 'Unspecified'))
+        self.assertEqual('teen', categorize_age(13, 'Unspecified'))
+        self.assertEqual('teen', categorize_age(19.9, 'Unspecified'))
+        self.assertEqual('20s', categorize_age(20, 'Unspecified'))
+        self.assertEqual('20s', categorize_age(29.9, 'Unspecified'))
+        self.assertEqual('30s', categorize_age(30, 'Unspecified'))
+        self.assertEqual('30s', categorize_age(39.9, 'Unspecified'))
+        self.assertEqual('40s', categorize_age(40, 'Unspecified'))
+        self.assertEqual('40s', categorize_age(49.9, 'Unspecified'))
+        self.assertEqual('50s', categorize_age(50, 'Unspecified'))
+        self.assertEqual('50s', categorize_age(59.9, 'Unspecified'))
+        self.assertEqual('60s', categorize_age(60, 'Unspecified'))
+        self.assertEqual('60s', categorize_age(69.9, 'Unspecified'))
+        self.assertEqual('70+', categorize_age(70, 'Unspecified'))
+        self.assertEqual('70+', categorize_age(122, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_age(123, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_age(123564, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_age('Unspecified',
+                                                       'Unspecified'))
 
     def test_categorize_etoh(self):
         with self.assertRaises(TypeError):
             categorize_etoh(12)
 
-        self.assertEqual('No', categorize_etoh('Never'))
-        self.assertEqual('Yes', categorize_etoh('Every day'))
-        self.assertEqual('Yes', categorize_etoh('Rarely (once a month)'))
-        self.assertEqual('Unspecified', categorize_etoh('Unspecified'))
+        self.assertEqual('No', categorize_etoh('Never', 'Unspecified'))
+        self.assertEqual('Yes', categorize_etoh('Every day', 'Unspecified'))
+        self.assertEqual('Yes', categorize_etoh('Rarely (once a month)',
+                                                'Unspecified'))
+        self.assertEqual('Unspecified', categorize_etoh('Unspecified',
+                                                        'Unspecified'))
 
     def test_correct_bmi(self):
-        self.assertEqual('Unspecified', correct_bmi(-2))
-        self.assertEqual('Unspecified', correct_bmi(7))
-        self.assertEqual('Unspecified', correct_bmi(80))
-        self.assertEqual('Unspecified', correct_bmi(200))
-        self.assertEqual('8.00', correct_bmi(8))
-        self.assertEqual('79.00', correct_bmi(79))
-        self.assertEqual('Unspecified', correct_bmi('Unspecified'))
+        self.assertEqual('Unspecified', correct_bmi(-2, 'Unspecified'))
+        self.assertEqual('Unspecified', correct_bmi(7, 'Unspecified'))
+        self.assertEqual('Unspecified', correct_bmi(80, 'Unspecified'))
+        self.assertEqual('Unspecified', correct_bmi(200, 'Unspecified'))
+        self.assertEqual('8.00', correct_bmi(8, 'Unspecified'))
+        self.assertEqual('79.00', correct_bmi(79, 'Unspecified'))
+        self.assertEqual('Unspecified', correct_bmi('Unspecified',
+                                                    'Unspecified'))
 
     def test_categorize_bmi(self):
-        self.assertEqual('Unspecified', categorize_bmi(-2))
-        self.assertEqual('Unspecified', categorize_bmi(7.9))
-        self.assertEqual('Underweight', categorize_bmi(8))
-        self.assertEqual('Underweight', categorize_bmi(18.4))
-        self.assertEqual('Normal', categorize_bmi(18.5))
-        self.assertEqual('Normal', categorize_bmi(24.9))
-        self.assertEqual('Overweight', categorize_bmi(25))
-        self.assertEqual('Overweight', categorize_bmi(29.9))
-        self.assertEqual('Obese', categorize_bmi(30))
-        self.assertEqual('Obese', categorize_bmi(79.9))
-        self.assertEqual('Unspecified', categorize_bmi(80))
-        self.assertEqual('Unspecified', categorize_bmi(210))
-        self.assertEqual('Unspecified', categorize_bmi('Unspecified'))
+        self.assertEqual('Unspecified', categorize_bmi(-2, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_bmi(7.9, 'Unspecified'))
+        self.assertEqual('Underweight', categorize_bmi(8, 'Unspecified'))
+        self.assertEqual('Underweight', categorize_bmi(18.4, 'Unspecified'))
+        self.assertEqual('Normal', categorize_bmi(18.5, 'Unspecified'))
+        self.assertEqual('Normal', categorize_bmi(24.9, 'Unspecified'))
+        self.assertEqual('Overweight', categorize_bmi(25, 'Unspecified'))
+        self.assertEqual('Overweight', categorize_bmi(29.9, 'Unspecified'))
+        self.assertEqual('Obese', categorize_bmi(30, 'Unspecified'))
+        self.assertEqual('Obese', categorize_bmi(79.9, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_bmi(80, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_bmi(210, 'Unspecified'))
+        self.assertEqual('Unspecified', categorize_bmi('Unspecified',
+                                                       'Unspecified'))
 
     def test_correct_age(self):
         self.assertEqual('Unspecified', correct_age('Unspecified', 56, 5.36,
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age(18, 'Unspecified', 5.36,
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age(18, 56, 'Unspecified',
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age(18, 56, 5.36,
+                                                    'Unspecified',
                                                     'Unspecified'))
         self.assertEqual('Unspecified', correct_age('Unspecified',
                                                     'Unspecified',
                                                     5.36,
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age('Unspecified',
                                                     56,
                                                     'Unspecified',
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age('Unspecified',
                                                     56,
                                                     5.36,
+                                                    'Unspecified',
                                                     'Unspecified'))
         self.assertEqual('Unspecified', correct_age('Unspecified',
                                                     'Unspecified',
                                                     'Unspecified',
+                                                    'Unspecified',
                                                     'Unspecified'))
-        self.assertEqual('Unspecified', correct_age(-2, 56, 5.36, 'Every day'))
+        self.assertEqual('Unspecified', correct_age(-2, 56, 5.36, 'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age(123, 56, 5.36,
-                                                    'Every day'))
+                                                    'Every day',
+                                                    'Unspecified'))
         self.assertEqual('Unspecified', correct_age(2, 92.0, 5.36,
-                                                    'Every day'))
-        self.assertEqual('Unspecified', correct_age(2, 56, 17, 'Every day'))
-        self.assertEqual('Unspecified', correct_age(2, 56, 5.36, 'Ever'))
-        self.assertEqual(2.0, correct_age(2, 56, 5.36, 'Never'))
+                                                    'Every day',
+                                                    'Unspecified'))
+        self.assertEqual('Unspecified', correct_age(2, 56, 17, 'Every day',
+                                                    'Unspecified'))
+        self.assertEqual('Unspecified', correct_age(2, 56, 5.36, 'Ever',
+                                                    'Unspecified'))
+        self.assertEqual(2.0, correct_age(2, 56, 5.36, 'Never', 'Unspecified'))
 
     def test_make_valid_kit_ids(self):
         # fix random seed

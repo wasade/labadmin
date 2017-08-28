@@ -156,11 +156,11 @@ md_lookup = {
     'Nares': {
         'BODY_PRODUCT': 'UBERON:mucus',
         'SAMPLE_TYPE': 'Nares',
-        'SCIENTIFIC_NAME': 'human nasal/pharyngeal metagenome',
+        'SCIENTIFIC_NAME': 'human nasopharyngeal metagenome',
         'TAXON_ID': '1131769',
         'BODY_HABITAT': 'UBERON:nose',
         'ENV_MATERIAL': 'mucus',
-        'ENV_PACKAGE': 'human-skin',
+        'ENV_PACKAGE': 'human-associated',
         'DESCRIPTION': 'American Gut Project Nares Sample',
         'BODY_SITE': 'UBERON:nostril'},
     'Vaginal mucus': {
@@ -185,13 +185,13 @@ md_lookup = {
         'BODY_SITE': 'UBERON:skin of foot'},
     'Nasal mucus': {
         'BODY_PRODUCT': 'UBERON:mucus',
-        'SAMPLE_TYPE': 'Mucus',
-        'SCIENTIFIC_NAME': 'human nasal/pharyngeal metagenome',
+        'SAMPLE_TYPE': 'Nares',
+        'SCIENTIFIC_NAME': 'human nasopharyngeal metagenome',
         'TAXON_ID': '1131769',
         'BODY_HABITAT': 'UBERON:nose',
         'ENV_MATERIAL': 'mucus',
         'ENV_PACKAGE': 'human-associated',
-        'DESCRIPTION': 'American Gut Project Nasal Mucus Sample',
+        'DESCRIPTION': 'American Gut Project Nares Sample',
         'BODY_SITE': 'UBERON:nostril'},
     'Stool': {
         'BODY_PRODUCT': 'UBERON:feces',

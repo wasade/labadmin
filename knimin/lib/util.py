@@ -273,7 +273,7 @@ def correct_bmi(bmi, null_val):
 def categorize_etoh(x, null_val):
     if x == 'Never':
         etoh_cat = 'No'
-    elif x == null_val:
+    elif x == null_val or x == 'Unspecified':
         etoh_cat = x
     elif isinstance(x, str):
         etoh_cat = "Yes"
