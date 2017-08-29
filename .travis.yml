@@ -20,7 +20,7 @@ before_install:
   # Update conda itself
   - conda update --yes conda
 install:
-  - travis_retry conda create --yes -n labadmin python=2.7 pip
+  - travis_retry conda create --yes -n labadmin python=2.7 pip xlrd
   - source activate labadmin
   - pip install -U pip
   - pip install -U click natsort coverage coveralls

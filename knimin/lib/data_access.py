@@ -1340,6 +1340,7 @@ class KniminAccess(object):
                     blanks_copy = copy(blanks_values)
                     blanks_copy['ANONYMIZED_NAME'] = blank
                     blanks_copy['HOST_SUBJECT_ID'] = blank
+                    blanks_copy['ASSIGNED_FROM_GEO'] = 'false'
                     rows.append([blank] + [blanks_copy[h] for h in headers])
 
             qiita_max = 63  # maximum column width in qiita

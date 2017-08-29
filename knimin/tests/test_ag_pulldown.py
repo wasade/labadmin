@@ -133,8 +133,19 @@ class testAGPulldownDLHandler(TestHandlerBase):
         # read in the true content from data dir for comparison
         truth = extract_zip(join(dirname(realpath(__file__)), 'data',
                                  'results_barcodes.zip'))
-        self.maxDiff = None
-        self.assertEqual(sneak_files(result), sneak_files(truth))
+
+        for a, b in zip(sneak_files(result, -1), sneak_files(truth, -1)):
+            self.assertEqual(sorted(a.keys()), sorted(b.keys()))
+            for k in a:
+                if k == 'failures.txt':
+                    self.assertEqual(a[k], b[k])
+                else:
+                    a_ = pd.read_csv(StringIO(a[k]),
+                                     sep='\t', encoding='iso-8859-1', quoting=csv.QUOTE_NONE, dtype=unicode).set_index('sample_name')
+                    b_ = pd.read_csv(StringIO(b[k]),
+                                     sep='\t', encoding='iso-8859-1', quoting=csv.QUOTE_NONE, dtype=unicode).set_index('sample_name')
+                    self.assertEqual(sorted(a_.columns), sorted(b_.columns))
+                    pdt.assert_frame_equal(a_, b_[a_.columns])
 
     def test_post_multiple_surverys(self):
         self.mock_login_admin()
