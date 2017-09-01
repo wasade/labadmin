@@ -3,6 +3,7 @@ from os.path import join, dirname, realpath
 from six import StringIO
 import datetime
 
+import pandas.util.testing as pdt
 import pandas as pd
 
 from knimin import db
@@ -25,6 +26,98 @@ class TestDataAccess(TestCase):
     def tearDown(self):
         db._clear_table('external_survey_answers', 'ag')
         db._revert_ready(['000023299'])
+
+    def test_clean_and_ambiguous_barcodes(self):
+        exp = [(tuple(), dict()),
+               (('000000000', '123456789'), dict()),
+               (('000000000', '123456789', 'A00000000'),
+                {'000000000': ['000000000B', '000000000C'],
+                 'A00000000': ['A000000000']})]
+        data = [tuple(), ('000000000', '123456789'),
+                ('000000000', 'A000000000', '123456789',
+                 '000000000B', '000000000C')]
+        for dat, (e_clean, e_amb) in zip(data, exp):
+            o_clean, o_amb = db._clean_and_ambiguous_barcodes(dat)
+            self.assertEqual(o_clean, e_clean)
+            self.assertEqual(o_amb, e_amb)
+
+        with self.assertRaises(ValueError):
+            db._clean_and_ambiguous_barcodes(['000000', ])
+
+
+    def test_get_single_survey_answers(self):
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._get_single_survey_answers(['doesnotexist', ])
+        pdt.assert_frame_equal(obs, exp)
+
+        obs = db._get_single_survey_answers(['000004216'])
+
+        # spot check
+        handed = obs[obs['question'] == 'DOMINANT_HAND']
+        self.assertEqual(handed['answer'].values[0],
+                         'I am right handed')
+
+        diet = obs[obs['question'] == 'DIET_TYPE']
+        self.assertEqual(diet['answer'].values[0],
+                         'Omnivore')
+
+        # all questions are unique
+        self.assertEqual(len(obs.question.unique()),
+                         len(obs))
+
+    def test_get_multiple_survey_answers(self):
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._get_multiple_survey_answers(['doesnotexist', ])
+        pdt.assert_frame_equal(obs, exp)
+
+        obs = db._get_multiple_survey_answers(['000004216'])
+
+        # spot check
+        # ALCOHOL_TYPES gets expanded, and the question itself
+        # should not be present in the output
+        self.assertNotIn('ALCOHOL_TYPES', obs.question)
+
+        # but the responses to it should be
+        alc_shortnames = {'ALCOHOL_TYPES_BEERCIDER': 'false',
+                          'ALCOHOL_TYPES_SOUR_BEERS': 'false',
+                          'ALCOHOL_TYPES_WHITE_WINE': 'false',
+                          'ALCOHOL_TYPES_RED_WINE': 'false',
+                          'ALCOHOL_TYPES_SPIRITSHARD_ALCOHOL': 'false',
+                          'ALCOHOL_TYPES_UNSPECIFIED': 'true'}
+	alc = obs[obs['question'].isin(alc_shortnames.keys())]
+        self.assertEqual(alc.shape, (6, 5))
+        for q, r in alc_shortnames.items():
+            o = alc[alc['question'] == q].answer.values[0]
+            self.assertEqual(o, r)
+
+        # all questions are unique
+        self.assertEqual(len(obs.question.unique()),
+                         len(obs))
+
+    def test_get_other_survey_answers(self):
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._get_other_survey_answers(['doesnotexist', ])
+        pdt.assert_frame_equal(obs, exp)
+
+        obs = db._get_other_survey_answers(['000004216'])
+        weight = obs[obs.question == 'WEIGHT_KG']
+        self.assertTrue(weight.answer.values[0].startswith('Free text'))
+
+        # all questions are unique
+        self.assertEqual(len(obs.question.unique()),
+                         len(obs))
 
     def test_sync_with_data_dictionary(self):
         d = {'some_category': u'some response',

@@ -453,10 +453,36 @@ class KniminAccess(object):
                  ON (ag.ag_kit.ag_login_id = ag.ag_login.ag_login_id)
                  WHERE barcode in %s"""
         res = self._con.execute_fetchall(sql, [tuple(b[:9] for b in barcodes)])
-        return {row[0]: dict(row) for row in res}
 
-    def get_surveys(self, barcodes):  # noqa
-        """Retrieve surveys for specific barcodes
+        parsed = {row[0]: dict(row) for row in res}
+        return parsed
+
+    def _survey_sql_to_dataframe(self, sql, barcodes):
+        """Query for survey responses, format as a DataFrame
+
+        Parameters
+        ----------
+        sql : str
+            Some query
+        barcodes : iterable of str
+            The barcodes to query for
+
+        Returns
+        -------
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        """
+        result_set = self._con.execute_fetchall(sql, [tuple(barcodes)])
+        obtained = (list(r) for r in result_set)
+        return pd.DataFrame(obtained, columns=['survey',
+                                               'participant_survey_id',
+                                               'barcode',
+                                               'question',
+                                               'answer'])
+
+    def _get_single_survey_answers(self, barcodes):
+        """Retrieve SINGLE answers for specific barcodes
 
         Parameters
         ----------
@@ -465,8 +491,40 @@ class KniminAccess(object):
 
         Returns
         -------
-        dict
-            {survey: {barcode: {shortname: response, ...}, ...}, ...}
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        """
+        sql = \
+            """SELECT S.survey_id AS the_survey,
+                      SBS.survey_id AS participant_survey_id,
+                      barcode, question_shortname, response
+               FROM ag.ag_kit_barcodes
+               JOIN ag.source_barcodes_surveys SBS USING (barcode)
+               JOIN ag.survey_answers SA USING (survey_id)
+               JOIN ag.survey_question USING (survey_question_id)
+               JOIN ag.survey_question_response_type USING (survey_question_id)
+               JOIN ag.group_questions GQ USING (survey_question_id)
+               JOIN ag.surveys S USING (survey_group)
+               WHERE survey_response_type='SINGLE'
+                   AND (withdrawn IS NULL OR withdrawn != 'Y')
+                   AND barcode in %s"""
+
+        return self._survey_sql_to_dataframe(sql, barcodes)
+
+    def _get_multiple_survey_answers(self, barcodes):
+        """Retrieve MULTIPLE answers for specific barcodes
+
+        Parameters
+        ----------
+        barcodes : iterable of str
+            The list of barcodes for which metadata will be retrieved
+
+        Returns
+        -------
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
 
         Notes
         -----
@@ -478,26 +536,14 @@ class KniminAccess(object):
         ALLERGIC_TO portion taken from the shortname column of the question
         table).
         """
-        # SINGLE answers SQL
-        single_sql = \
-            """SELECT S.survey_id, barcode, question_shortname, response
-               FROM ag.ag_kit_barcodes
-               JOIN ag.source_barcodes_surveys USING (barcode)
-               JOIN ag.survey_answers SA USING (survey_id)
-               JOIN ag.survey_question USING (survey_question_id)
-               JOIN ag.survey_question_response_type USING (survey_question_id)
-               JOIN ag.group_questions GQ USING (survey_question_id)
-               JOIN ag.surveys S USING (survey_group)
-               WHERE survey_response_type='SINGLE'
-                   AND (withdrawn IS NULL OR withdrawn != 'Y')
-                   AND barcode in %s"""
-
         # MULTIPLE answers SQL
-        multiple_sql = \
-            """SELECT S.survey_id, barcode, question_shortname,
+        sql = \
+            """SELECT S.survey_id AS the_survey,
+                      SBS.survey_id AS participant_survey_id,
+                      barcode, question_shortname,
                       array_agg(response) as responses
                FROM ag.ag_kit_barcodes
-               JOIN ag.source_barcodes_surveys USING (barcode)
+               JOIN ag.source_barcodes_surveys SBS USING (barcode)
                JOIN ag.survey_answers USING (survey_id)
                JOIN ag.survey_question USING (survey_question_id)
                JOIN ag.survey_question_response_type USING (survey_question_id)
@@ -506,21 +552,88 @@ class KniminAccess(object):
                WHERE survey_response_type='MULTIPLE'
                    AND (withdrawn IS NULL OR withdrawn != 'Y')
                    AND barcode in %s
-               GROUP BY S.survey_id, barcode, question_shortname"""
+               GROUP BY S.survey_id, barcode, SBS.survey_id, question_shortname"""
 
-        # Also need to get the possible responses for multiples
-        multiple_responses_sql = \
+        query = self._survey_sql_to_dataframe(sql, barcodes)
+
+        # Get all the possible responses for the multiple selection questions
+        sql = \
             """SELECT question_shortname, response
                FROM survey_question
                JOIN survey_question_response_type USING (survey_question_id)
                JOIN survey_question_response USING (survey_question_id)
                WHERE survey_response_type = 'MULTIPLE'"""
 
-        # STRING and TEXT answers SQL
-        others_sql = \
-            """SELECT S.survey_id, barcode, question_shortname, response
+        headers = {}
+        for question, response in self._con.execute_fetchall(sql):
+            if question not in headers:
+                headers[question] = {}
+
+            # Format the question / response to a Qiita compatible shortname
+            # For example, FERMENTED_CONSUMED and Other, Cider, etc to
+            # FERMENTED_CONSUMED_OTHER, FERMENTED_CONSUMED_CIDER
+            response = response.replace(" ", "_")
+            response = sub('\W', '', response)
+            header = '_'.join([question, response]).upper()
+            headers[question][response] = header
+
+        # Each row needs to expand to N rows, where N is the number
+        # of multiple responses. Or rather, we need to translate question
+        # which represents multiple checkboxes, such as the selection choises
+        # for FERMENTED_CONSUMED, into individual responses. The strategy
+        # we're going to use is to pull out subsets of the DataFrame per
+        # "multiple" question, mark those rows for deletion, create
+        # N rows per individual response, and finally delete the rows and
+        # concatenate our expanded responses together.
+        to_drop = pd.Int64Index([])
+        new_rows = []
+
+        for question in query['question'].unique():
+            question_grp = query[query['question'] == question].copy()
+            to_drop = to_drop.append(question_grp.index)
+
+            response_to_header = headers[question]
+            for _, row in question_grp.iterrows():
+                row_answer = row['answer']
+
+                for response, header in response_to_header.items():
+                    # row answer is a tuple
+                    new_answer = response in row_answer
+                    new_answer = 'true' if new_answer else 'false'
+
+                    new_row = row.copy()
+                    new_row['question'] = header
+                    new_row['answer'] = new_answer
+                    new_rows.append(new_row)
+
+        if new_rows or to_drop.size > 0:
+            query.drop(to_drop, inplace=True)
+            new_rows = pd.DataFrame(new_rows)
+            query = pd.concat([query, new_rows], ignore_index=True,
+                              verify_integrity=True)
+
+        return query
+
+    def _get_other_survey_answers(self, barcodes):
+        """Retrieve STRING / TEXT answers for specific barcodes
+
+        Parameters
+        ----------
+        barcodes : iterable of str
+            The list of barcodes for which metadata will be retrieved
+
+        Returns
+        -------
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        """
+        sql = \
+            """SELECT S.survey_id AS the_survey,
+                      SBS.survey_id AS participant_survey_id,
+                      barcode, question_shortname, response
                FROM ag.ag_kit_barcodes
-               JOIN ag.source_barcodes_surveys USING (barcode)
+               JOIN ag.source_barcodes_surveys SBS USING (barcode)
                JOIN ag.survey_answers_other SA USING (survey_id)
                JOIN ag.survey_question USING (survey_question_id)
                JOIN ag.survey_question_response_type USING (survey_question_id)
@@ -530,70 +643,88 @@ class KniminAccess(object):
                    AND (withdrawn IS NULL OR withdrawn != 'Y')
                    AND barcode IN %s"""
 
-        # Get third party surveys, if there is one and one is requested
+        query = self._survey_sql_to_dataframe(sql, barcodes)
 
-        # Formats a question and response for a MULTIPLE question into a header
-        def _translate_multiple_response_to_header(question, response):
-            response = response.replace(" ", "_")
-            response = sub('\W', '', response)
-            header = '_'.join([question, response])
-            return header.upper()
+        # clean up garbage from json responses
+        if len(query):
+            query['answer'] = [unicode(a, 'utf-8').strip('"\'[]_,\t\r\n\\/ ')
+                               for a in query['answer']]
 
-        # For each MULTIPLE question, build a dict of the possible responses
-        # and what the header should be for the column representing the
-        # response
-        multiples_headers = defaultdict(dict)
-        for question, response in self._con.execute_fetchall(
-                multiple_responses_sql):
-            multiples_headers[question][response] = \
-                _translate_multiple_response_to_header(question, response)
+        return query
 
+    def _clean_and_ambiguous_barcodes(self, barcodes):
+        """Strip suffixes and prefixes from barcodes"""
         # find special case barcodes with appended info and store them
-        special_bc = sorted(b for b in barcodes if len(b) > 9)
-        # Strip off any appending from barcodes before getting data
-        bc = tuple(set(b[:9] for b in barcodes))
-        # this function reduces code duplication by generalizing as much
-        # as possible how questions and responses are fetched from the db
+        # e.g., 000001234A
+        ambig = defaultdict(list)
+        barcodes_clean = set()
+        for b in barcodes:
+            clean = b[:9]
+            barcodes_clean.add(clean)
 
-        def _format_responses_as_dict(sql, json=False, multiple=False):
-            ret_dict = defaultdict(lambda: defaultdict(dict))
-            for survey, barcode, q, a in self._con.execute_fetchall(sql, [bc]):
-                # Get special barcodes that match, if applicable
-                match = [x for x in special_bc if barcode in x]
-                if not match:
-                    match = [barcode]
+            if len(b) > 9:
+                ambig[clean].append(b)
+            if len(b) < 9:
+                raise ValueError("%s is shorter than 9 characters." % b)
 
-                if json:
-                    # Clean since all json are single-element lists
-                    # and we want no seperators at the beginning or end of data
-                    a = unicode(a, 'utf-8')
-                    a = a.strip('"\'[]_,\t\r\n\\/ ')
-                if multiple:
-                    for response, header in multiples_headers[q].items():
-                        for bcs in match:
-                            ret_dict[survey][bcs][header] = \
-                                'Yes' if response in a else 'No'
-                else:
-                    for bcs in match:
-                        ret_dict[survey][bcs][q] = a
-            return ret_dict
+        return (tuple(sorted(barcodes_clean)), ambig)
 
-        single_results = _format_responses_as_dict(single_sql)
-        others_results = _format_responses_as_dict(others_sql, json=True)
-        multiple_results = _format_responses_as_dict(multiple_sql,
-                                                     multiple=True)
+    def get_surveys(self, barcodes):  # noqa
+        """Retrieve surveys for specific barcodes
 
-        # combine the results for each barcode
-        for survey, barcodes in single_results.items():
-            for barcode in barcodes:
-                single_results[survey][barcode].update(
-                    others_results[survey][barcode])
-                single_results[survey][barcode].update(
-                    multiple_results[survey][barcode])
+        Parameters
+        ----------
+        barcodes : iterable of str
+            The list of barcodes for which metadata will be retrieved
 
-        # At this point, the variable name is a misnomer, as it contains
-        # the results from all question types
-        return single_results
+        Returns
+        -------
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        """
+        clean, ambig = self._clean_and_ambiguous_barcodes(barcodes)
+
+        single = self._get_single_survey_answers(clean)
+        multiple = self._get_multiple_survey_answers(clean)
+        other = self._get_other_survey_answers(clean)
+
+        result = pd.concat([single, other, multiple],
+                           ignore_index=True,
+                           verify_integrity=True)
+
+        # resolve ambiguities
+        to_drop = pd.Int64Index([])
+        new_rows = []
+        for singular, replicate in ambig.items():
+            rows = result[result['barcode'] == singular].copy()
+            to_drop = to_drop.append(rows.index)
+            rows.reset_index(inplace=True)
+
+            for rep in replicate:
+                new_rep_rows = rows.copy()
+                new_rep_rows.loc[:, 'barcode'] = rep
+                new_rows.append(new_rep_rows)
+
+        if new_rows or to_drop.size > 0:
+            result.drop(to_drop, inplace=True)
+            result = pd.concat([result] + new_rows, ignore_index=True,
+                               verify_integrity=True)
+
+        ### stop gap, generate a similar data structure to what was prior
+        final_d = {}
+        for s, sgrp in result.groupby('survey'):
+            final_d[s] = {}
+            sd = final_d[s]
+            for sid, sidgrp in sgrp.groupby('participant_survey_id'):
+                for _, row in sidgrp.iterrows():
+                    b = row['barcode']
+                    k = b
+                    if k not in sd:
+                        sd[k] = {}
+                    ssbd = sd[k]
+                    ssbd[row['question']] = row['answer']
+        return final_d
 
     def _months_between_dates(self, d1, d2):
         """Calculate the number of months between two dates
@@ -731,7 +862,8 @@ class KniminAccess(object):
 
         survey_sql = """SELECT barcode, survey_id
                         FROM ag.ag_kit_barcodes
-                        JOIN ag.source_barcodes_surveys USING (barcode)"""
+                        JOIN ag.source_barcodes_surveys USING (barcode)
+                        ORDER BY survey_id"""
         survey_lookup = dict(self._con.execute_fetchall(survey_sql))
 
         dupes_sql = """SELECT duplicate_survey_id, participant_name
@@ -783,65 +915,72 @@ class KniminAccess(object):
 
         # personal microbiome (id 5)
         pm_remap = {'yes': 'true', 'no': 'false'}
-        for barcode, responses in md[5].items():
-            for c in md[5][barcode]:
-                if c.startswith('PM_'):
-                    v = md[5][barcode][c]
-                    md[5][barcode][c] = pm_remap.get(v.lower(), v)
+        if 5 in md:
+            for barcode, responses in md[5].items():
+                for c in md[5][barcode]:
+                    if c.startswith('PM_'):
+                        v = md[5][barcode][c]
+                        md[5][barcode][c] = pm_remap.get(v.lower(), v)
 
         # surfers (id 4)
         surfers_remap = {'yes': 'true', 'no': 'false'}
-        for barcode, responses in md[4].items():
-            for c in md[4][barcode]:
-                if c.startswith('SURF_'):
-                    v = md[4][barcode][c]
-                    md[4][barcode][c] = surfers_remap.get(v.lower(), v)
+        if 4 in md:
+            for barcode, responses in md[4].items():
+                for c in md[4][barcode]:
+                    if c.startswith('SURF_'):
+                        v = md[4][barcode][c]
+                        md[4][barcode][c] = surfers_remap.get(v.lower(), v)
 
 
         # Fermentation survey (id 3)
         ferment_remap = {'yes': 'true', 'no': 'false'}
-        for barcode, responses in md[3].items():
-            for c in md[3][barcode]:
-                if c.startswith('FERMENTED'):
-                    v = md[3][barcode][c]
-                    md[3][barcode][c] = ferment_remap.get(v.lower(), v)
+        if 3 in md:
+            for barcode, responses in md[3].items():
+                ################ 000067690 has multiple fermentation surveys???????
+                ###### it looks like which survey used is state specific
+                print(barcode, responses['FERMENTED_INCREASED'])
+                for c in md[3][barcode]:
+                    if c.startswith('FERMENTED'):
+                        v = md[3][barcode][c]
+                        md[3][barcode][c] = ferment_remap.get(v.lower(), v)
 
         # Pet survey (id 2)
         animal_remap = {'yes': 'true', 'no': 'false'}
-        for barcode, responses in md[2].items():
-            # Invariant information
-            md[2][barcode]['ANONYMIZED_NAME'] = barcode
-            md[2][barcode]['HOST_SUBJECT_ID'] = barcode
-            # md[2][barcode]['HOST_TAXID'] = ????
-            md[2][barcode]['TITLE'] = 'American Gut Project'
-            md[2][barcode]['ALTITUDE'] = not_applicable
-            md[2][barcode]['ASSIGNED_FROM_GEO'] = 'true'
-            md[2][barcode]['ENV_BIOME'] = 'dense settlement biome'
-            md[2][barcode]['ENV_FEATURE'] = 'animal-associated habitat'
-            md[2][barcode]['DEPTH'] = not_applicable
-            md[2][barcode]['DESCRIPTION'] = 'American Gut Project' + \
-                ' Animal sample'
-            md[2][barcode]['DNA_EXTRACTED'] = 'true'
-            md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
-            md[2][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
+        if 2 in md:
+            for barcode, responses in md[2].items():
+                # Invariant information
+                md[2][barcode]['ANONYMIZED_NAME'] = barcode
+                md[2][barcode]['HOST_SUBJECT_ID'] = barcode
+                # md[2][barcode]['HOST_TAXID'] = ????
+                md[2][barcode]['TITLE'] = 'American Gut Project'
+                md[2][barcode]['ALTITUDE'] = not_applicable
+                md[2][barcode]['ASSIGNED_FROM_GEO'] = 'true'
+                md[2][barcode]['ENV_BIOME'] = 'dense settlement biome'
+                md[2][barcode]['ENV_FEATURE'] = 'animal-associated habitat'
+                md[2][barcode]['DEPTH'] = not_applicable
+                md[2][barcode]['DESCRIPTION'] = 'American Gut Project' + \
+                    ' Animal sample'
+                md[2][barcode]['DNA_EXTRACTED'] = 'true'
+                md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
+                md[2][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
 
-            # remap the yes/no questions
-            for c in ('FOOD_SOURCE_HUMAN_FOOD',
-                      'FOOD_SOURCE_PET_STORE_FOOD',
-                      'FOOD_SOURCE_WILD_FOOD',
-                      'FOOD_SOURCE_UNSPECIFIED',
-                      'FOOD_SPECIAL_ORGANIC',
-                      'FOOD_SPECIAL_UNSPECIFIED',
-                      'FOOD_SPECIAL_GRAIN_FREE'):
-                if c in md[2][barcode]:
-                    v = md[2][barcode][c]
-                    md[2][barcode][c] = animal_remap.get(v.lower(), v)
+                # remap the yes/no questions
+                for c in ('FOOD_SOURCE_HUMAN_FOOD',
+                          'FOOD_SOURCE_PET_STORE_FOOD',
+                          'FOOD_SOURCE_WILD_FOOD',
+                          'FOOD_SOURCE_UNSPECIFIED',
+                          'FOOD_SPECIAL_ORGANIC',
+                          'FOOD_SPECIAL_UNSPECIFIED',
+                          'FOOD_SPECIAL_GRAIN_FREE'):
+                    if c in md[2][barcode]:
+                        v = md[2][barcode][c]
+                        md[2][barcode][c] = animal_remap.get(v.lower(), v)
 
-            specific_info = barcode_info[barcode[:9]]
-            zipcode = specific_info['zip'].upper()
-            country = specific_info['country']
-            md[1][barcode] = self._geocode(md[1][barcode], zipcode, country,
-                                           zip_lookup, country_lookup)
+                specific_info = barcode_info[barcode[:9]]
+                zipcode = specific_info['zip'].upper()
+                country = specific_info['country']
+                md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
+                                               zip_lookup, country_lookup)
 
         # Human survey (id 1)
         for barcode, responses in md[1].items():
