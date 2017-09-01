@@ -653,7 +653,7 @@ class KniminAccess(object):
         return query
 
     def _clean_and_ambiguous_barcodes(self, barcodes):
-        """Strip suffixes and prefixes from barcodes"""
+        """Strip suffixes from barcodes"""
         # find special case barcodes with appended info and store them
         # e.g., 000001234A
         ambig = defaultdict(list)
@@ -669,7 +669,7 @@ class KniminAccess(object):
 
         return (tuple(sorted(barcodes_clean)), ambig)
 
-    def get_surveys(self, barcodes):  # noqa
+    def get_surveys(self, barcodes):
         """Retrieve surveys for specific barcodes
 
         Parameters
@@ -692,14 +692,17 @@ class KniminAccess(object):
         result = pd.concat([single, other, multiple],
                            ignore_index=True,
                            verify_integrity=True)
-
-        # resolve ambiguities
+        # resolve ambiguities (e.g., 000000000 -> 000000000A and 000000000B)
         to_drop = pd.Int64Index([])
         new_rows = []
         for singular, replicate in ambig.items():
+            # a requested barcode does not responses
+            if singular not in result.barcode.unique():
+                continue
+
             rows = result[result['barcode'] == singular].copy()
             to_drop = to_drop.append(rows.index)
-            rows.reset_index(inplace=True)
+            rows.reset_index(drop=True, inplace=True)
 
             for rep in replicate:
                 new_rep_rows = rows.copy()
@@ -711,20 +714,23 @@ class KniminAccess(object):
             result = pd.concat([result] + new_rows, ignore_index=True,
                                verify_integrity=True)
 
+        return result
+
+    ### temporary notes...
         ### stop gap, generate a similar data structure to what was prior
-        final_d = {}
-        for s, sgrp in result.groupby('survey'):
-            final_d[s] = {}
-            sd = final_d[s]
-            for sid, sidgrp in sgrp.groupby('participant_survey_id'):
-                for _, row in sidgrp.iterrows():
-                    b = row['barcode']
-                    k = b
-                    if k not in sd:
-                        sd[k] = {}
-                    ssbd = sd[k]
-                    ssbd[row['question']] = row['answer']
-        return final_d
+        #final_d = {}
+        #for s, sgrp in result.groupby('survey'):
+        #    final_d[s] = {}
+        #    sd = final_d[s]
+        #    for sid, sidgrp in sgrp.groupby('participant_survey_id'):
+        #        for _, row in sidgrp.iterrows():
+        #            b = row['barcode']
+        #            k = b
+        #            if k not in sd:
+        #                sd[k] = {}
+        #            ssbd = sd[k]
+        #            ssbd[row['question']] = row['answer']
+        #return final_d
 
     def _months_between_dates(self, d1, d2):
         """Calculate the number of months between two dates

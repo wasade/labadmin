@@ -3,6 +3,7 @@ from os.path import join, dirname, realpath
 from six import StringIO
 import datetime
 
+import numpy as np
 import pandas.util.testing as pdt
 import pandas as pd
 
@@ -118,6 +119,31 @@ class TestDataAccess(TestCase):
         # all questions are unique
         self.assertEqual(len(obs.question.unique()),
                          len(obs))
+
+    def test_get_surveys(self):
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'],
+                           index=pd.RangeIndex(0, 0, 1))
+        obs = db.get_surveys(['doesnotexist', ])
+        pdt.assert_frame_equal(obs, exp)
+
+        base = db.get_surveys(['000004216'])
+        reps = db.get_surveys(['000004216A', '000004216B'])
+
+        base_a = base.copy()
+        base_a['barcode'] = '000004216A'
+        base_b = base.copy()
+        base_b['barcode'] = '000004216B'
+
+        exp = pd.concat([base_a, base_b], ignore_index=True)
+        exp = exp.sort_values(['barcode', 'question'])
+        obs = reps.sort_values(['barcode', 'question'])
+
+        pdt.assert_frame_equal(obs.reset_index(drop=True),
+                               exp.reset_index(drop=True))
 
     def test_sync_with_data_dictionary(self):
         d = {'some_category': u'some response',
