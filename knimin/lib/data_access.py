@@ -775,7 +775,7 @@ class KniminAccess(object):
             result = pd.concat([result] + new_rows, ignore_index=True,
                                verify_integrity=True)
 
-        #return result
+        return result
 
     ### temporary notes...
         ### stop gap, generate a similar data structure to what was prior
