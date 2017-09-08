@@ -457,8 +457,43 @@ class KniminAccess(object):
         parsed = {row[0]: dict(row) for row in res}
         return parsed
 
-    def _survey_sql_to_dataframe(self, sql, barcodes):
+    def _survey_sql_to_dataframe(self, sql, barcodes, answer_is_json=False):
         """Query for survey responses, format as a DataFrame
+
+        Parameters
+        ----------
+        sql : str
+            Some query
+        barcodes : iterable of str
+            The barcodes to query for
+        answer_is_json : bool, optional
+            If True, the answer field is interpreted to be a json object of the
+            form {question: answer}.
+
+        Returns
+        -------
+        DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        """
+        result_set = self._con.execute_fetchall(sql, [tuple(barcodes)])
+
+        if answer_is_json:
+            obtained = []
+            for sid, participant_sid, barcode, q_and_a in result_set:
+                for q, a in q_and_a.items():
+                    obtained.append((sid, participant_sid, barcode, q, str(a)))
+        else:
+            obtained = (list(r) for r in result_set)
+
+        return pd.DataFrame(obtained, columns=['survey',
+                                               'participant_survey_id',
+                                               'barcode',
+                                               'question',
+                                               'answer'], dtype=str)
+
+    def _get_vioscreen_survey_answers(self, barcodes):
+        """Query for vioscreen responses, format as a DataFrame
 
         Parameters
         ----------
@@ -473,13 +508,37 @@ class KniminAccess(object):
             Columns as: [survey, participant_survey_id, barcode,
             question, answer]. "question" is question shortname.
         """
-        result_set = self._con.execute_fetchall(sql, [tuple(barcodes)])
-        obtained = (list(r) for r in result_set)
-        return pd.DataFrame(obtained, columns=['survey',
-                                               'participant_survey_id',
-                                               'barcode',
-                                               'question',
-                                               'answer'])
+        # Get external survey answers and normalize column names
+        sql = """SELECT external_survey, survey_id, barcode, answers
+                 FROM ag.external_survey_answers
+                 JOIN ag.source_barcodes_surveys USING (survey_id)
+                 JOIN ag.ag_kit_barcodes USING (barcode)
+                 JOIN ag.external_survey_sources
+                   USING (external_survey_id)
+                 WHERE external_survey = 'Vioscreen' AND barcode IN %s"""
+
+        # the ignored vioscreen entires either do not make sense
+        # such as vioscreen_age as the user does not fill this out,
+        # or are internal such as vioscreen_username
+        vioscreen_to_remove = [u'vioscreen_activity_level', u'vioscreen_age',
+                               u'vioscreen_bcodeid', u'vioscreen_bmi',
+                               u'vioscreen_dob', u'vioscreen_eer',
+                               u'vioscreen_email', u'vioscreen_finished',
+                               u'vioscreen_gender', u'vioscreen_height',
+                               u'vioscreen_nutrient_recommendation',
+                               u'vioscreen_procdate', u'vioscreen_protocol',
+                               u'vioscreen_recno', u'vioscreen_scf',
+                               u'vioscreen_scfv', u'vioscreen_srvid',
+                               u'vioscreen_started', u'vioscreen_time',
+                               u'vioscreen_username', u'vioscreen_user_id',
+                               u'vioscreen_visit', u'vioscreen_weight']
+
+        df = self._survey_sql_to_dataframe(sql, barcodes, answer_is_json=True)
+        to_remove = df.question.isin(vioscreen_to_remove)
+        df.drop(to_remove.index[to_remove], inplace=True)
+        df.question = [self._convert_header('Vioscreen', q)
+                       for q in df.question]
+        return df
 
     def _get_single_survey_answers(self, barcodes):
         """Retrieve SINGLE answers for specific barcodes
@@ -688,10 +747,12 @@ class KniminAccess(object):
         single = self._get_single_survey_answers(clean)
         multiple = self._get_multiple_survey_answers(clean)
         other = self._get_other_survey_answers(clean)
+        vioscreen = self._get_vioscreen_survey_answers(clean)
 
-        result = pd.concat([single, other, multiple],
+        result = pd.concat([single, other, multiple, vioscreen],
                            ignore_index=True,
                            verify_integrity=True)
+
         # resolve ambiguities (e.g., 000000000 -> 000000000A and 000000000B)
         to_drop = pd.Int64Index([])
         new_rows = []
@@ -714,7 +775,7 @@ class KniminAccess(object):
             result = pd.concat([result] + new_rows, ignore_index=True,
                                verify_integrity=True)
 
-        return result
+        #return result
 
     ### temporary notes...
         ### stop gap, generate a similar data structure to what was prior
@@ -799,42 +860,26 @@ class KniminAccess(object):
                     'Unspecified')
         return barcode
 
-    def format_survey_data(self, md, external_surveys=None, full=False):  # noqa
-        """Modifies barcode metadata to include all columns and correct units
+    def _construct_country_lookup(self):
+        country_lookup = self._construct_country_lookup()
+        country_sql = "SELECT country, EBI from ag.iso_country_lookup"
+        country_lookup = dict(self._con.execute_fetchall(country_sql))
+        # Add for scrubbed testing database
+        country_lookup['REMOVED'] = 'REMOVED'
 
-        Specifically, this function:
-        - corrects height and weight to be in the same units (cm and kg,
-          respectively)
-        - Adds AGE_MONTHS and AGE_YEARS columns
-        - Adds standard columns for EBI and MiMARKS
+    def _construct_zip_lookup(self, full=False):
+        """Construct a map associating a zipcode to location details
 
         Parameters
         ----------
-        md : dict of dict of dict
-            E.g., the output from get_barcode_metadata.
-            {survey: {barcode: {shortname: response, ...}, ...}, ...}
-        external_surveys : list of str
-            External surveys to add, default None
         full : bool
-            Whether to pull full or filtered answers. Default filtered (False)
+            If true, do not truncate latitude and longitude
 
         Returns
         -------
-        dict of dict of dict
-            the formatted metadata
-        list of tuple of str
-            The barcode and error message if something failed
+        dict of dict
+            {zipcode: {country: [latitude, longitude, elevation, state]}}
         """
-        not_provided = 'Not provided'
-        not_applicable = 'Not applicable'
-
-        if external_surveys is None:
-            external_surveys = []
-        errors = {}
-        # get barcode information
-        all_barcodes = set().union(*[set(md[s]) for s in md])
-        barcode_info = self.get_ag_barcode_details(all_barcodes)
-
         # tuples are latitude, longitude, elevation, state
         if full:
             zipcode_sql = """SELECT UPPER(zipcode), country,
@@ -848,6 +893,7 @@ class KniminAccess(object):
                                  round(longitude::numeric,1),
                                  round(elevation::numeric, 1), state
                              FROM zipcodes"""
+
         zip_lookup = defaultdict(dict)
 
         def _decode_zip_lookup(item):
@@ -861,98 +907,10 @@ class KniminAccess(object):
         for row in self._con.execute_fetchall(zipcode_sql):
             zip_lookup[row[0]][row[1]] = map(_decode_zip_lookup, row[2:])
 
-        country_sql = "SELECT country, EBI from ag.iso_country_lookup"
-        country_lookup = dict(self._con.execute_fetchall(country_sql))
-        # Add for scrubbed testing database
-        country_lookup['REMOVED'] = 'REMOVED'
+        return zip_lookup
 
-        survey_sql = """SELECT barcode, survey_id
-                        FROM ag.ag_kit_barcodes
-                        JOIN ag.source_barcodes_surveys USING (barcode)
-                        ORDER BY survey_id"""
-        survey_lookup = dict(self._con.execute_fetchall(survey_sql))
-
-        dupes_sql = """SELECT duplicate_survey_id, participant_name
-                       FROM ag.duplicate_consents dc
-                       JOIN ag.ag_login_surveys als USING (ag_login_id)
-                       WHERE  dc.main_survey_id = als.survey_id"""
-        dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
-
-        # Get external survey answers and normalize column names
-        external_sql = """SELECT survey_id, external_survey, answers
-                          FROM ag.external_survey_answers
-                          JOIN ag.source_barcodes_surveys USING (survey_id)
-                          JOIN ag.ag_kit_barcodes USING (barcode)
-                          JOIN ag.external_survey_sources
-                            USING (external_survey_id)
-                          WHERE external_survey = %s AND barcode IN %s"""
-        external = defaultdict(dict)
-
-        # the ignored vioscreen entires either do not make sense
-        # such as vioscreen_age as the user does not fill this out,
-        # or are internal such as vioscreen_username
-        external_to_drop = {u'vioscreen_activity_level', u'vioscreen_age',
-                            u'vioscreen_bcodeid', u'vioscreen_bmi',
-                            u'vioscreen_dob', u'vioscreen_eer',
-                            u'vioscreen_email', u'vioscreen_finished',
-                            u'vioscreen_gender', u'vioscreen_height',
-                            u'vioscreen_nutrient_recommendation',
-                            u'vioscreen_procdate', u'vioscreen_protocol',
-                            u'vioscreen_recno', u'vioscreen_scf',
-                            u'vioscreen_scfv', u'vioscreen_srvid',
-                            u'vioscreen_started', u'vioscreen_time',
-                            u'vioscreen_username', u'vioscreen_user_id',
-                            u'vioscreen_visit', u'vioscreen_weight'}
-        all_barcodes = tuple(all_barcodes)
-        unknown_external = {}
-        for e in external_surveys:
-            query_result = self._con.execute_fetchall(external_sql,
-                                                      [e, all_barcodes])
-            for survey_id, survey, answers in query_result:
-                d = {}
-                for key, val in viewitems(answers):
-                    newkey = self._convert_header(survey, key)
-                    if newkey.lower() not in external_to_drop:
-                        d[newkey] = val
-                external[survey_id].update(d)
-        if external:
-            unknown_external = {k: not_provided
-                                for k in external[external.keys()[0]].keys()}
-
-        # personal microbiome (id 5)
-        pm_remap = {'yes': 'true', 'no': 'false'}
-        if 5 in md:
-            for barcode, responses in md[5].items():
-                for c in md[5][barcode]:
-                    if c.startswith('PM_'):
-                        v = md[5][barcode][c]
-                        md[5][barcode][c] = pm_remap.get(v.lower(), v)
-
-        # surfers (id 4)
-        surfers_remap = {'yes': 'true', 'no': 'false'}
-        if 4 in md:
-            for barcode, responses in md[4].items():
-                for c in md[4][barcode]:
-                    if c.startswith('SURF_'):
-                        v = md[4][barcode][c]
-                        md[4][barcode][c] = surfers_remap.get(v.lower(), v)
-
-
-        # Fermentation survey (id 3)
-        ferment_remap = {'yes': 'true', 'no': 'false'}
-        if 3 in md:
-            for barcode, responses in md[3].items():
-                ################ 000067690 has multiple fermentation surveys???????
-                ###### it looks like which survey used is state specific
-                print(barcode, responses['FERMENTED_INCREASED'])
-                for c in md[3][barcode]:
-                    if c.startswith('FERMENTED'):
-                        v = md[3][barcode][c]
-                        md[3][barcode][c] = ferment_remap.get(v.lower(), v)
-
-        # Pet survey (id 2)
-        animal_remap = {'yes': 'true', 'no': 'false'}
-        if 2 in md:
+    def _smooth_survey_pets(self, md):
+        if len(md):
             for barcode, responses in md[2].items():
                 # Invariant information
                 md[2][barcode]['ANONYMIZED_NAME'] = barcode
@@ -970,23 +928,68 @@ class KniminAccess(object):
                 md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
                 md[2][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
 
-                # remap the yes/no questions
-                for c in ('FOOD_SOURCE_HUMAN_FOOD',
-                          'FOOD_SOURCE_PET_STORE_FOOD',
-                          'FOOD_SOURCE_WILD_FOOD',
-                          'FOOD_SOURCE_UNSPECIFIED',
-                          'FOOD_SPECIAL_ORGANIC',
-                          'FOOD_SPECIAL_UNSPECIFIED',
-                          'FOOD_SPECIAL_GRAIN_FREE'):
-                    if c in md[2][barcode]:
-                        v = md[2][barcode][c]
-                        md[2][barcode][c] = animal_remap.get(v.lower(), v)
-
                 specific_info = barcode_info[barcode[:9]]
                 zipcode = specific_info['zip'].upper()
                 country = specific_info['country']
                 md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
                                                zip_lookup, country_lookup)
+
+    def _smooth_survey_yesno(self, md):
+        """Inplace cast yes/no responses to true / false"""
+        if len(md):
+            remap = {'yes': 'true',
+                    'true': 'true',
+                    'false': 'false',
+                    'no': 'false'}
+            revised = [remap.get(a.lower(), a)
+                       for a in md['answer']]
+            md['answer'] = revised
+
+    def format_survey_data(self, md, full=False):  # noqa
+        """Modifies barcode metadata to include all columns and correct units
+
+        Specifically, this function:
+        - corrects height and weight to be in the same units (cm and kg,
+          respectively)
+        - Adds AGE_MONTHS and AGE_YEARS columns
+        - Adds standard columns for EBI and MiMARKS
+
+        Parameters
+        ----------
+        md : DataFrame
+            Columns as: [survey, participant_survey_id, barcode,
+            question, answer]. "question" is question shortname.
+        full : bool
+            Whether to pull full or filtered answers. Default filtered (False)
+
+        Returns
+        -------
+        dict of dict of dict
+            the formatted metadata
+        list of tuple of str
+            The barcode and error message if something failed
+        """
+        not_provided = 'Not provided'
+        not_applicable = 'Not applicable'
+        errors = {}
+
+        # get barcode information
+        all_barcodes = set(md['barcode'].unique())
+        barcode_info = self.get_ag_barcode_details(all_barcodes)
+
+        zip_lookup = self._construct_zip_lookup(full)
+        country_lookup = self._construct_country_lookup()
+
+
+        dupes_sql = """SELECT duplicate_survey_id, participant_name
+                       FROM ag.duplicate_consents dc
+                       JOIN ag.ag_login_surveys als USING (ag_login_id)
+                       WHERE  dc.main_survey_id = als.survey_id"""
+        dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
+
+        self._smooth_survey_yesno(md)
+        self._smooth_survey_pets(md)
+        self._smooth_survey_human(md)
 
         # Human survey (id 1)
         for barcode, responses in md[1].items():
@@ -1421,7 +1424,19 @@ class KniminAccess(object):
         if len(all_survey_info) > 0:
             all_results, errors = self.format_survey_data(all_survey_info,
                                                           external, full)
-
+        #### ###
+        # pick up from here
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
+        ####
         # Do the pulldown for the environmental samples
         sql = """SELECT barcode, environment_sampled
                  FROM ag.ag_kit_barcodes
@@ -1431,18 +1446,7 @@ class KniminAccess(object):
         env_barcodes = self._con.execute_fetchall(sql, [tuple(barcodes)])
         barcodes.extend([b[0] for b in env_barcodes])
 
-        # Set up sql for getting all survey question shortnames
-        header_sql = """SELECT DISTINCT question_shortname
-                        FROM ag.survey_question
-                        JOIN ag.group_questions USING (survey_question_id)
-                        JOIN ag.surveys USING (survey_group)
-                        WHERE survey_id = %s"""
 
-        ext_survey_sql = """SELECT DISTINCT json_object_keys(answers)
-                            FROM ag.external_survey_answers
-                            JOIN ag.external_survey_sources
-                                USING (external_survey_id)
-                            WHERE external_survey = %s"""
 
         # keep track of which barcodes were seen so we know which weren't
         barcodes_seen = set()
@@ -1455,14 +1459,7 @@ class KniminAccess(object):
             headers = set(x[0] for x in
                           self._con.execute_fetchall(header_sql, [survey]))
             headers = headers.union(bc_responses.values()[0])
-            # Add external survey headers to the human survey answers
-            if survey == 1 and external is not None:
-                for ext in external:
-                    # get all external survey headers and format them
-                    ext_headers = self._con.execute_fetchall(
-                        ext_survey_sql, [ext])
-                    headers.union(self._convert_header(ext, h[0])
-                                  for h in ext_headers)
+
             # Remove the ebi prohibited columns
             headers = headers.difference(ebi_remove)
             headers = sorted(headers)
@@ -2102,18 +2099,23 @@ class KniminAccess(object):
             pulldown_date = datetime.now()
 
         # Load file data into insertable json format
-        header = in_file.readline().strip().split(separator)
-        inserts = []
-        for line in in_file:
-            hold = {h: v.strip('"\'[]_,\t\r\n\\/ ') for h, v in
-                    zip(header, line.split(separator))}
+        data = pd.read_csv(in_file, sep=',', dtype=str, na_filter=False)
+        data.set_index(survey_id_col, inplace=True)
 
-            sid = hold[survey_id_col]
+        if ext_survey == 'Vioscreen':
+            # in the provided vioscreen files, the headers Calcium and calcium
+            # are present. The subsequent consumer is not assured to handle
+            # this gracefully if case is disregarded (which it is for sample
+            # information). Rewriting "calcium" to "calcium.1" in accordance
+            # with how this header was specified in the manuscript submission.
+            data = data.rename(columns={'calcium': 'calcium.1'})
+
+        inserts = []
+        for sid, row in data.iterrows():
             if trim is not None:
                 sid = re.sub(trim, '', sid)
-            del hold[survey_id_col]
             inserts.append([sid, external_id, pulldown_date,
-                            json.dumps(hold)])
+                            json.dumps(row.to_dict())])
 
         # insert into the database
         sql = """INSERT INTO ag.external_survey_answers

@@ -17,12 +17,19 @@ class TestDataAccess(TestCase):
     data_dict_fp = join(dirname(realpath(__file__)), '..', '..', 'tests',
                         'data', 'table_s2.xlsx')
 
+    def _load_vioscreen(self):
+        with open(self.ext_survey_fp, 'rU') as f:
+            # -160 is to remove a suffix attached to our survey_ids
+            db.store_external_survey(f, 'Vioscreen', separator=',',
+                                     survey_id_col='Username', trim='-160')
+
     def setUp(self):
         # Make sure vioscreen survey exists in DB
         try:
             db.add_external_survey('Vioscreen', 'FFQ', 'http://vioscreen.com')
         except ValueError:
             pass
+        self._load_vioscreen()
 
     def tearDown(self):
         db._clear_table('external_survey_answers', 'ag')
@@ -45,6 +52,87 @@ class TestDataAccess(TestCase):
         with self.assertRaises(ValueError):
             db._clean_and_ambiguous_barcodes(['000000', ])
 
+    def test_smooth_survey_yesno(self):
+        df = pd.DataFrame([], columns=['survey',
+                                       'participant_survey_id',
+                                       'barcode',
+                                       'question',
+                                       'answer'])
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        db._smooth_survey_yesno(df)
+        pdt.assert_frame_equal(df, exp)
+
+        df = pd.DataFrame([(1, 'abcd', '123456789', 'foo', 'bar'),
+                           (2, 'abcd', '123456789', 'foo', 'bar'),
+                           (3, 'abcd', '123456789', 'foo', 'bar'),
+                           (4, 'abcd', '123456789', 'foo', 'bar'),
+                           (5, 'abcd', '123456789', 'foo', 'bar'),
+                           (5, 'abcd', '123456789', 'foo', 'baz'),
+                           (5, 'abcd', '123456789', 'foo', 'yes'),
+                           (5, 'abcd', '123456789', 'foo', 'Yes'),
+                           (5, 'abcd', '123456789', 'foo', 'no'),
+                           (5, 'abcd', '123456789', 'foo', 'No'),
+                           (1, 'abcd', '123456789', 'foo', 'bar')],
+                          columns=['survey',
+                                   'participant_survey_id',
+                                   'barcode',
+                                   'question',
+                                   'answer'])
+
+        exp = pd.DataFrame([(1, 'abcd', '123456789', 'foo', 'bar'),
+                            (2, 'abcd', '123456789', 'foo', 'bar'),
+                            (3, 'abcd', '123456789', 'foo', 'bar'),
+                            (4, 'abcd', '123456789', 'foo', 'bar'),
+                            (5, 'abcd', '123456789', 'foo', 'bar'),
+                            (5, 'abcd', '123456789', 'foo', 'baz'),
+                            (5, 'abcd', '123456789', 'foo', 'true'),
+                            (5, 'abcd', '123456789', 'foo', 'true'),
+                            (5, 'abcd', '123456789', 'foo', 'false'),
+                            (5, 'abcd', '123456789', 'foo', 'false'),
+                            (1, 'abcd', '123456789', 'foo', 'bar')],
+                           columns=['survey',
+                                    'participant_survey_id',
+                                    'barcode',
+                                    'question',
+                                    'answer'])
+        db._smooth_survey_yesno(df)
+        pdt.assert_frame_equal(df, exp)
+
+    def test_get_vioscreen_survey_answers(self):
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._get_vioscreen_survey_answers(['doesnotexist', ])
+        pdt.assert_frame_equal(obs, exp, check_index_type=False, check_dtype=False)
+
+        obs = db._get_vioscreen_survey_answers(['000023299',   # dup sid
+                                                '000023300',   # dup sid
+                                                '000004216',   # no responses
+                                                '000018046'])  # has resp
+
+        self.assertEqual(len(obs['participant_survey_id'].unique()), 2)
+        self.assertEqual(set(obs['barcode'].unique()), {'000023299',
+                                                        '000023300',
+                                                        '000018046'})
+        obs_q = set(obs['question'].unique())
+        spot = obs_q.intersection({'VIOSCREEN_VITA_IU',
+                                   'VIOSCREEN_GLYCINE',
+                                   'VIOSCREEN_V_ORANGE'})
+        self.assertEqual(len(obs_q.intersection(spot)), 3)
+        self.assertEqual(len(obs_q) * 3, len(obs))
+
+        # apparently no these surveys have no vitd2 in the raw data
+        obs_vitd2 = obs[obs['question'] == 'VIOSCREEN_VITD2'].answer.tolist()
+        self.assertEqual(obs_vitd2, ['0', '0', '0'])
+
+        obs_zinc = obs[obs['question'] == 'VIOSCREEN_ZINC'].answer.tolist()
+        self.assertEqual(obs_zinc, ['15.7077523', '15.7077523', '8.278876819'])
 
     def test_get_single_survey_answers(self):
         exp = pd.DataFrame([], columns=['survey',
@@ -172,7 +260,7 @@ class TestDataAccess(TestCase):
     def test_pulldown_data_dictionary_check(self): # noqa: max-complexity(20)
         with open(self.ext_survey_fp, 'rU') as f:
             obs = db.store_external_survey(
-                f, 'Vioscreen', separator=',', survey_id_col='SubjectId',
+                f, 'Vioscreen', separator=',', survey_id_col='Username',
                 trim='-160')
 
         dd = pd.ExcelFile(self.data_dict_fp)
@@ -256,13 +344,6 @@ class TestDataAccess(TestCase):
                       % ','.join(unexp_values))
 
     def test_pulldown_third_party(self):
-        # Add survey answers
-        with open(self.ext_survey_fp, 'rU') as f:
-            obs = db.store_external_survey(
-                f, 'Vioscreen', separator=',', survey_id_col='SubjectId',
-                trim='-160')
-        self.assertEqual(obs, 3)
-
         barcodes = ['000029429', '000018046', '000023299', '000023300']
         # Test without third party
         obs, failures = db.pulldown(barcodes)
