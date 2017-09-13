@@ -52,6 +52,37 @@ class TestDataAccess(TestCase):
         with self.assertRaises(ValueError):
             db._clean_and_ambiguous_barcodes(['000000', ])
 
+    def test_smooth_survey_pets(self):
+        df = pd.DataFrame([], columns=['survey',
+                                       'participant_survey_id',
+                                       'barcode',
+                                       'question',
+                                       'answer'])
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._smooth_survey_pets(df)
+        pdt.assert_frame_equal(df, exp)
+
+        df = pd.DataFrame([(2, 'abcd', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo2', 'bar2'),
+                           (2, 'wxyz', '123459', 'foo3', 'bar3'),
+                           (1, 'abcd', '111119', 'foo', 'bar'),
+                           (1, 'xxx', '126789', 'foo', 'bar')],
+                           columns=['survey',
+                                    'participant_survey_id',
+                                    'barcode',
+                                    'question',
+                                    'answer'])
+        obs = db._smooth_survey_pets(df)
+        self.assertEqual(len(obs[obs.survey == 1]), 2)
+        self.assertEqual(len(obs[obs.barcode == '123459']), 13)
+        self.assertEqual(len(obs[obs.barcode == '123456789']), 27)
+        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 14)
+
     def test_smooth_survey_yesno(self):
         df = pd.DataFrame([], columns=['survey',
                                        'participant_survey_id',
@@ -258,11 +289,6 @@ class TestDataAccess(TestCase):
         self.assertEqual(d, exp)
 
     def test_pulldown_data_dictionary_check(self): # noqa: max-complexity(20)
-        with open(self.ext_survey_fp, 'rU') as f:
-            obs = db.store_external_survey(
-                f, 'Vioscreen', separator=',', survey_id_col='Username',
-                trim='-160')
-
         dd = pd.ExcelFile(self.data_dict_fp)
         primary = dd.parse("Primary Survey")
         vioscreen = dd.parse('Vioscreen FFQ')
@@ -273,8 +299,7 @@ class TestDataAccess(TestCase):
                               '000001166', '000014401', '000014889',
                               '000041833', '000021693',
                               '000023576', '000013287',
-                              '000001586', '000038207'],
-                             external=['Vioscreen'])
+                              '000001586', '000038207'])
         md = pd.read_csv(
             StringIO(obs[1]), delimiter='\t', dtype=str, encoding='utf-8')
         md.columns = [c.lower() for c in md.columns]

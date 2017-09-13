@@ -30,6 +30,13 @@ from geocoder import geocode, Location, GoogleAPILimitExceeded
 from string_converter import converter
 
 
+DATAFRAME_SURVEY_COLUMNS = ('survey',
+                            'participant_survey_id',
+                            'barcode',
+                            'question',
+                            'answer')
+
+
 class IncorrectEmailError(Exception):
     pass
 
@@ -486,11 +493,8 @@ class KniminAccess(object):
         else:
             obtained = (list(r) for r in result_set)
 
-        return pd.DataFrame(obtained, columns=['survey',
-                                               'participant_survey_id',
-                                               'barcode',
-                                               'question',
-                                               'answer'], dtype=str)
+        return pd.DataFrame(obtained, columns=DATAFRAME_SURVEY_COLUMNS,
+                            dtype=str)
 
     def _get_vioscreen_survey_answers(self, barcodes):
         """Query for vioscreen responses, format as a DataFrame
@@ -777,22 +781,6 @@ class KniminAccess(object):
 
         return result
 
-    ### temporary notes...
-        ### stop gap, generate a similar data structure to what was prior
-        #final_d = {}
-        #for s, sgrp in result.groupby('survey'):
-        #    final_d[s] = {}
-        #    sd = final_d[s]
-        #    for sid, sidgrp in sgrp.groupby('participant_survey_id'):
-        #        for _, row in sidgrp.iterrows():
-        #            b = row['barcode']
-        #            k = b
-        #            if k not in sd:
-        #                sd[k] = {}
-        #            ssbd = sd[k]
-        #            ssbd[row['question']] = row['answer']
-        #return final_d
-
     def _months_between_dates(self, d1, d2):
         """Calculate the number of months between two dates
 
@@ -861,7 +849,6 @@ class KniminAccess(object):
         return barcode
 
     def _construct_country_lookup(self):
-        country_lookup = self._construct_country_lookup()
         country_sql = "SELECT country, EBI from ag.iso_country_lookup"
         country_lookup = dict(self._con.execute_fetchall(country_sql))
         # Add for scrubbed testing database
@@ -898,7 +885,7 @@ class KniminAccess(object):
 
         def _decode_zip_lookup(item):
             if item is None:
-                return not_provided
+                return "Not provided"
             elif isinstance(item, (str, unicode)):
                 return item.decode('utf-8')
             else:
@@ -910,29 +897,39 @@ class KniminAccess(object):
         return zip_lookup
 
     def _smooth_survey_pets(self, md):
-        if len(md):
-            for barcode, responses in md[2].items():
-                # Invariant information
-                md[2][barcode]['ANONYMIZED_NAME'] = barcode
-                md[2][barcode]['HOST_SUBJECT_ID'] = barcode
-                # md[2][barcode]['HOST_TAXID'] = ????
-                md[2][barcode]['TITLE'] = 'American Gut Project'
-                md[2][barcode]['ALTITUDE'] = not_applicable
-                md[2][barcode]['ASSIGNED_FROM_GEO'] = 'true'
-                md[2][barcode]['ENV_BIOME'] = 'dense settlement biome'
-                md[2][barcode]['ENV_FEATURE'] = 'animal-associated habitat'
-                md[2][barcode]['DEPTH'] = not_applicable
-                md[2][barcode]['DESCRIPTION'] = 'American Gut Project' + \
-                    ' Animal sample'
-                md[2][barcode]['DNA_EXTRACTED'] = 'true'
-                md[2][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
-                md[2][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
+        sid = 2
+        new_rows = []
+        pets = md[md.survey == sid]
+        added = set()
+        for idx, row in pets.iterrows():
+            barcode = row['barcode']
+            part_survey_id = row['participant_survey_id']
 
-                specific_info = barcode_info[barcode[:9]]
-                zipcode = specific_info['zip'].upper()
-                country = specific_info['country']
-                md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
-                                               zip_lookup, country_lookup)
+            if (barcode, part_survey_id) in added:
+                continue
+            else:
+                added.add((barcode, part_survey_id))
+
+            filler = (sid, part_survey_id, barcode)
+            new_rows.append(filler + ('ANONYMIZED_NAME', barcode))
+            new_rows.append(filler + ('HOST_SUBJECT_ID', barcode))
+            new_rows.append(filler + ('TITLE', 'American Gut Project'))
+            new_rows.append(filler + ('ALTITUDE', 'Not applicable'))
+            new_rows.append(filler + ('ASSIGNED_FROM_GEO', 'true'))
+            new_rows.append(filler + ('ENV_BIOME', 'dense settlement biome'))
+            new_rows.append(filler + ('ENV_FEATURE',
+                                      'animal-associated habitat'))
+            new_rows.append(filler + ('DEPTH', 'Not applicable'))
+            new_rows.append(filler + ('DESCRIPTION',
+                                      'American Gut Project Animal sample'))
+            new_rows.append(filler + ('DNA_EXTRACTED', 'true'))
+            new_rows.append(filler + ('PHYSICAL_SPECIMEN_REMAINING', 'true'))
+            new_rows.append(filler + ('PHYSICAL_SPECIMEN_LOCATION', 'UCSDMI'))
+
+        new_rows = pd.DataFrame(new_rows, columns=DATAFRAME_SURVEY_COLUMNS,
+                                dtype=str)
+
+        return pd.concat([md, new_rows])
 
     def _smooth_survey_yesno(self, md):
         """Inplace cast yes/no responses to true / false"""
@@ -944,6 +941,7 @@ class KniminAccess(object):
             revised = [remap.get(a.lower(), a)
                        for a in md['answer']]
             md['answer'] = revised
+        return md
 
     def format_survey_data(self, md, full=False):  # noqa
         """Modifies barcode metadata to include all columns and correct units
@@ -987,9 +985,13 @@ class KniminAccess(object):
                        WHERE  dc.main_survey_id = als.survey_id"""
         dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
 
-        self._smooth_survey_yesno(md)
-        self._smooth_survey_pets(md)
-        self._smooth_survey_human(md)
+        md = self._smooth_survey_yesno(md)
+        md = self._smooth_survey_pets(md)
+        md = self._smooth_survey_human(md)
+
+        ### need general geocoding for both pets / human
+                #md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
+                 #                              zip_lookup, country_lookup)
 
         # Human survey (id 1)
         for barcode, responses in md[1].items():
@@ -1392,7 +1394,7 @@ class KniminAccess(object):
         return converter.camel_to_snake('_'.join(
             [survey.replace(' ', '_'), header])).upper()
 
-    def pulldown(self, barcodes, blanks=None, external=None,  # noqa
+    def pulldown(self, barcodes, blanks=None,  # noqa
                  full=False):
         """Pulls down AG metadata for given barcodes
 
@@ -1423,7 +1425,7 @@ class KniminAccess(object):
         all_survey_info = self.get_surveys(barcodes)
         if len(all_survey_info) > 0:
             all_results, errors = self.format_survey_data(all_survey_info,
-                                                          external, full)
+                                                          full)
         #### ###
         # pick up from here
         ####
