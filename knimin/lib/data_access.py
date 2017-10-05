@@ -11,6 +11,7 @@ from requests.exceptions import SSLError
 import json
 import re
 import pandas as pd
+import numpy as np
 
 from bcrypt import hashpw, gensalt
 from future.utils import viewitems
@@ -811,41 +812,42 @@ class KniminAccess(object):
         """Adds geocoding information to the barcoe for pulldown"""
         # for a proper lookup in the dict, zipcode must be encoded as utf-8
         key_zipcode = zipcode.encode('utf-8')
-        try:
-            barcode['LATITUDE'] = zip_lookup[key_zipcode][country][0]
-            barcode['LONGITUDE'] = zip_lookup[key_zipcode][country][1]
-            barcode['ELEVATION'] = zip_lookup[key_zipcode][country][2]
-            barcode['STATE'] = zip_lookup[key_zipcode][country][3]
-            barcode['COUNTRY'] = country_lookup[country]
-            barcode['GEO_LOC_NAME'] = ':'.join(
-                [barcode['COUNTRY'], barcode['STATE']])
-        except KeyError:
-            # geocode unknown zip/country combo and add to
-            # zipcode table & lookup dict
-            info = self.get_geocode_zipcode(zipcode, country)
-            if info.lat is not None:
-                barcode['LATITUDE'] = "%.1f" % info.lat
-                barcode['LONGITUDE'] = "%.1f" % info.long
-                barcode['ELEVATION'] = "%.1f" % info.elev
-                barcode['STATE'] = info.state
-                barcode['COUNTRY'] = country_lookup[info.country]
-                barcode['GEO_LOC_NAME'] = ':'.join(
-                    [barcode['COUNTRY'], barcode['STATE']])
-                # Store in dict so we don't geocode again
-                zip_lookup[key_zipcode][country] = (
-                    round(info.lat, 1), round(info.long, 1),
-                    round(info.elev, 1), info.state)
-            else:
-                barcode['LATITUDE'] = 'Unspecified'
-                barcode['LONGITUDE'] = 'Unspecified'
-                barcode['ELEVATION'] = 'Unspecified'
-                barcode['STATE'] = 'Unspecified'
-                barcode['COUNTRY'] = 'Unspecified'
-                barcode['GEO_LOC_NAME'] = 'Unspecified'
-                # Store in dict so we don't geocode again
-                zip_lookup[key_zipcode][country] = (
-                    'Unspecified', 'Unspecified', 'Unspecified',
-                    'Unspecified')
+        print(zip_lookup[key_zipcode])
+        #try:
+        barcode['LATITUDE'] = zip_lookup[key_zipcode][country][0]
+        barcode['LONGITUDE'] = zip_lookup[key_zipcode][country][1]
+        barcode['ELEVATION'] = zip_lookup[key_zipcode][country][2]
+        barcode['STATE'] = zip_lookup[key_zipcode][country][3]
+        barcode['COUNTRY'] = country_lookup[country]
+        barcode['GEO_LOC_NAME'] = ':'.join(
+            [barcode['COUNTRY'], barcode['STATE']])
+        #except KeyError:
+        #    # geocode unknown zip/country combo and add to
+        #    # zipcode table & lookup dict
+        #    info = self.get_geocode_zipcode(zipcode, country)
+        #    if info.lat is not None:
+        #        barcode['LATITUDE'] = "%.1f" % info.lat
+        #        barcode['LONGITUDE'] = "%.1f" % info.long
+        #        barcode['ELEVATION'] = "%.1f" % info.elev
+        #        barcode['STATE'] = info.state
+        #        barcode['COUNTRY'] = country_lookup[info.country]
+        #        barcode['GEO_LOC_NAME'] = ':'.join(
+        #            [barcode['COUNTRY'], barcode['STATE']])
+        #        # Store in dict so we don't geocode again
+        #        zip_lookup[key_zipcode][country] = (
+        #            round(info.lat, 1), round(info.long, 1),
+        #            round(info.elev, 1), info.state)
+        #    else:
+        #        barcode['LATITUDE'] = 'Unspecified'
+        #        barcode['LONGITUDE'] = 'Unspecified'
+        #        barcode['ELEVATION'] = 'Unspecified'
+        #        barcode['STATE'] = 'Unspecified'
+        #        barcode['COUNTRY'] = 'Unspecified'
+        #        barcode['GEO_LOC_NAME'] = 'Unspecified'
+        #        # Store in dict so we don't geocode again
+        #        zip_lookup[key_zipcode][country] = (
+        #            'Unspecified', 'Unspecified', 'Unspecified',
+        #            'Unspecified')
         return barcode
 
     def _construct_country_lookup(self):
@@ -853,6 +855,7 @@ class KniminAccess(object):
         country_lookup = dict(self._con.execute_fetchall(country_sql))
         # Add for scrubbed testing database
         country_lookup['REMOVED'] = 'REMOVED'
+        return country_lookup
 
     def _construct_zip_lookup(self, full=False):
         """Construct a map associating a zipcode to location details
@@ -897,11 +900,30 @@ class KniminAccess(object):
         return zip_lookup
 
     def _smooth_survey_pets(self, md):
+        """Add static entries for any unique pet survey"""
         sid = 2
-        new_rows = []
         pets = md[md.survey == sid]
+        new_rows = self._smooth_survey_host_invariant(pets, is_human=False)
+        return pd.concat([md, new_rows])
+
+    def _smooth_survey_host_invariant(self, md, is_human):
+        if is_human:
+            host_taxid = '9606'
+            scientific_name = 'Homo sapiens'
+            env_feature = 'human-associated habitat'
+            host_common_name = 'Not provided'
+            descrip = "Not provided"  # NOTE: Down stream; based on sample type
+        else:
+            host_taxid = 'Not provided'
+            scientific_name = 'Not provided'
+            env_feature = 'animal-associated habitat'
+            host_common_name = 'human'
+            descrip = "American Gut Project Animal sample"
+
         added = set()
-        for idx, row in pets.iterrows():
+        new_rows = []
+        for idx, row in md.iterrows():
+            sid = row['survey']
             barcode = row['barcode']
             part_survey_id = row['participant_survey_id']
 
@@ -912,24 +934,23 @@ class KniminAccess(object):
 
             filler = (sid, part_survey_id, barcode)
             new_rows.append(filler + ('ANONYMIZED_NAME', barcode))
+            new_rows.append(filler + ('HOST_TAXID', host_taxid))
+            new_rows.append(filler + ('SCIENTIFIC_NAME', scientific_name))
             new_rows.append(filler + ('HOST_SUBJECT_ID', barcode))
             new_rows.append(filler + ('TITLE', 'American Gut Project'))
             new_rows.append(filler + ('ALTITUDE', 'Not applicable'))
             new_rows.append(filler + ('ASSIGNED_FROM_GEO', 'true'))
             new_rows.append(filler + ('ENV_BIOME', 'dense settlement biome'))
-            new_rows.append(filler + ('ENV_FEATURE',
-                                      'animal-associated habitat'))
+            new_rows.append(filler + ('ENV_FEATURE', env_feature))
             new_rows.append(filler + ('DEPTH', 'Not applicable'))
-            new_rows.append(filler + ('DESCRIPTION',
-                                      'American Gut Project Animal sample'))
+            new_rows.append(filler + ('DESCRIPTION', descrip))
             new_rows.append(filler + ('DNA_EXTRACTED', 'true'))
+            new_rows.append(filler + ('HOST_COMMON_NAME', host_common_name))
             new_rows.append(filler + ('PHYSICAL_SPECIMEN_REMAINING', 'true'))
             new_rows.append(filler + ('PHYSICAL_SPECIMEN_LOCATION', 'UCSDMI'))
 
-        new_rows = pd.DataFrame(new_rows, columns=DATAFRAME_SURVEY_COLUMNS,
-                                dtype=str)
-
-        return pd.concat([md, new_rows])
+        return pd.DataFrame(new_rows, columns=DATAFRAME_SURVEY_COLUMNS,
+                            dtype=str)
 
     def _smooth_survey_yesno(self, md):
         """Inplace cast yes/no responses to true / false"""
@@ -942,6 +963,399 @@ class KniminAccess(object):
                        for a in md['answer']]
             md['answer'] = revised
         return md
+
+    def _human_normalize_numeric():
+        raise obviously
+        # convert numeric fields
+        for field in ('HEIGHT_CM', 'WEIGHT_KG'):
+            md[1][barcode][field] = sub('[^0-9.]',
+                                        '', md[1][barcode][field])
+            try:
+                md[1][barcode][field] = float(md[1][barcode][field])
+            except ValueError:
+                md[1][barcode][field] = not_provided
+
+        if md[1][barcode]['WEIGHT_KG'] != not_provided:
+            md[1][barcode]['WEIGHT_KG'] = int(
+                md[1][barcode]['WEIGHT_KG'])
+        if md[1][barcode]['HEIGHT_CM'] != not_provided:
+            md[1][barcode]['HEIGHT_CM'] = int(
+                md[1][barcode]['HEIGHT_CM'])
+
+    def _human_normalize_height():
+        raise obviously
+        # Correct height units
+        if responses['HEIGHT_UNITS'] == 'inches' and \
+                isinstance(md[1][barcode]['HEIGHT_CM'], float):
+            md[1][barcode]['HEIGHT_CM'] = \
+                2.54*md[1][barcode]['HEIGHT_CM']
+        md[1][barcode]['HEIGHT_UNITS'] = 'centimeters'
+
+
+    def _human_normalize_weight():
+        raise obviously
+        # Correct weight units
+        if responses['WEIGHT_UNITS'] == 'pounds' and \
+                isinstance(md[1][barcode]['WEIGHT_KG'], float):
+            md[1][barcode]['WEIGHT_KG'] = \
+                md[1][barcode]['WEIGHT_KG']/2.20462
+        md[1][barcode]['WEIGHT_UNITS'] = 'kilograms'
+
+    def _human_create_bmi():
+        raise obviously
+        if all([isinstance(md[1][barcode]['WEIGHT_KG'], float),
+                md[1][barcode]['WEIGHT_KG'] != 0.0,
+                isinstance(md[1][barcode]['HEIGHT_CM'], float),
+                md[1][barcode]['HEIGHT_CM'] != 0.0]):
+            md[1][barcode]['BMI'] = md[1][barcode]['WEIGHT_KG'] / \
+                (md[1][barcode]['HEIGHT_CM']/100)**2
+        else:
+            md[1][barcode]['BMI'] = not_provided
+            md[1][barcode]['HEIGHT_CM'] = not_provided
+            md[1][barcode]['WEIGHT_KG'] = not_provided
+
+        md[1][barcode]['BMI_CAT'] = categorize_bmi(
+            md[1][barcode]['BMI'], not_provided)
+        md[1][barcode]['BMI_CORRECTED'] = correct_bmi(
+            md[1][barcode]['BMI'], not_provided)
+
+        md[1][barcode]['SUBSET_BMI'] = \
+            18.5 <= md[1][barcode]['BMI'] < 30 and \
+            not md[1][barcode]['BMI'] == not_provided
+
+        # make sure conversions are done
+        if md[1][barcode]['BMI'] != not_provided:
+            md[1][barcode]['BMI'] = '%.2f' % md[1][barcode]['BMI']
+
+            ##### why a string? :/
+
+    def _human_create_age_years_and_subset():
+        raise obviously
+        # Get age in years (int) and remove birth month
+        if responses['BIRTH_MONTH'] != 'Unspecified' and \
+                responses['BIRTH_YEAR'] != 'Unspecified':
+            birthdate = datetime(
+                int(responses['BIRTH_YEAR']),
+                int(month_int_lookup[responses['BIRTH_MONTH']]), 1)
+            age_in_month = self._months_between_dates(
+                birthdate, datetime(bc_info['sample_date'].year,
+                                    bc_info['sample_date'].month,
+                                    bc_info['sample_date'].day))
+            md[1][barcode]['AGE_YEARS'] = int(age_in_month / 12.0)
+        else:
+            md[1][barcode]['AGE_YEARS'] = not_provided
+            md[1][barcode]['BIRTH_MONTH'] = not_provided
+            md[1][barcode]['BIRTH_YEAR'] = not_provided
+
+    def _human_create_age_corrected():
+        """Create AGE_CORRECTED and AGE_CAT"""
+        def age_corrected(row):
+            years = row['AGE_YEARS']
+            height = row['HEIGHT_CM']
+            weight = row['WEIGHT_KG']
+            alc = row['ALCOHOL_CONSUMPTION']
+            return correct_age(years, height, weight, alc)
+
+        def age_category(row):
+            corrected = row['AGE_CORRECTED']
+            return categorize_age(corrected, 'Not provided')
+
+        df['AGE_CORRECTED'] = df.apply(age_corrected, axis=1)
+        df['AGE_CAT'] = df.apply(age_category, axis=1)
+
+        return df
+
+    def _human_create_sex():
+        """Create the SEX category"""
+        def sex(row):
+            g = row['GENDER']
+            if g is not None:
+                return g.lower()
+            else:
+                return 'Not provided'
+
+        df['SEX'] = df.apply(sex, axis=1)
+        return df
+
+    def _human_create_ibd_diagnosis(self, df):
+        """Create the IBD_DIAGNOSIS column"""
+        mapping = {"Ileal Crohn's Disease": "Crohn's disease",
+                   "Colonic Crohn's Disease" : "Crohn's disease",
+                   "Ileal and Colonic Crohn's Disease": "Crohn's disease",
+                   'Ulcerative colitis': 'Ulcerative colitis'}
+        def ibd(row):
+            obs = row['IBD_DIAGNOSIS_REFINED']
+            return mapping.get(obs, 'Not provided')
+
+        df['IBD_DIAGNOSIS'] = df.apply(ibd, axis=1)
+        return df
+
+    def _human_create_alcohol_consumption(self, df):
+        """Create inferred ALCOHOL_CONSUMPTION field"""
+        def alcohol(row):
+            return categorize_etoh(row['ALCOHOL_FREQUENCY'], not_provided)
+
+        df['ALCOHOL_CONSUMPTION'] = df.apply(alcohol, axis=1)
+        return df
+
+    def _human_create_collection_season():
+        def season(row):
+            return season_lookup.get(row['COLLECTION_MONTH'], 'Not provided')
+
+        df['COLLECTION_SEASON'] = df.apply(season, axis=1)
+        return df
+
+    def _human_create_economic_census_regions(self, df):
+        """Create the inferred CENSUS_REGION and ECONOMIC_REGION categories"""
+        missing = {'Census_1': 'Not provided', 'Economic': 'Not provided'}
+
+        def census(row):
+            state = row.get('STATE', 'Not provided')
+            return regions_by_state.get(state, missing)['Census_1']
+
+        def economic(row):
+            state = row.get('STATE', 'Not provided')
+            return regions_by_state.get(state, missing)['Economic']
+
+        df['CENSUS_REGION'] = df.apply(census, axis=1)
+        df['ECONOMIC_REGION'] = df.apply(economic, axis=1)
+
+        return df
+
+    def _human_create_subset_age(self, df):
+        """Create the inferred SUBSET_AGE column"""
+        criteria = {'AGE_YEARS': (19, 70)}
+        if 'AGE_YEARS' not in df.columns:
+            return df
+
+        def test(row):
+            val = row['AGE_YEARS']
+            return not np.isnan(val) and (19 < val < 70)
+
+        df['SUBSET_AGE'] = df.apply(test, axis=1)
+        return df
+
+    def _human_create_subset_diabetes(self, df):
+        """Create the inferred SUBSET_DIABETES column"""
+        criteria = {'DIABETES': 'I do not have this condition'}
+        return self._human_create_subset_column(df, 'SUBSET_DIABETES',
+                                                criteria)
+
+    def _human_create_subset_ibd(self, df):
+        """Create the inferred SUBSET_IBD column"""
+        criteria = {'IBD': 'I do not have this condition'}
+        return self._human_create_subset_column(df, 'SUBSET_IBD', criteria)
+
+    def _human_create_subset_antibiotic_history(self, df):
+        """Create the inferred SUBSET_ANTIBIOTIC_HISTORY column"""
+        criteria = {'ANTIBIOTIC_HISTORY':
+                        'I have not taken antibiotics in the past year.'}
+        return self._human_create_subset_column(df,
+                                                'SUBSET_ANTIBIOTIC_HISTORY',
+                                                criteria)
+
+    def _human_create_subset_healthy(self, df):
+        """Create the inferred SUBSET_HEALTHY column"""
+        criteria = {'SUBSET_AGE': True,
+                    'SUBSET_DIABETES': True,
+                    'SUBSET_IBD': True,
+                    'SUBSET_ANTIBIOTIC_HISTORY': True,
+                    'SUBSET_BMI': True}
+        return self._human_create_subset_column(df, 'SUBSET_HEALTHY', criteria)
+
+    def _human_create_subset_column(self, df, result, criteria):
+        """Return a new series based on exact criteria
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            The frame to operate on
+        result : str
+            The new column name to store into.
+        criteria : dict
+            The key corresponds to a column in the df, the value to the
+            condition which must be met.
+
+        Returns
+        -------
+        pd.DataFrame
+        A new series of bool, where True indicates the criteria were met
+        or False if the criteria were not met is added to the DataFrame.
+        If any of the criteria columns are not found, then the DataFrame
+        is returned unmodified.
+        """
+        if not set(criteria).issubset(set(df.columns)):
+            return df
+
+        def test(row):
+            observed = [not np.isnan(row[col]) and row[col] == exp
+                        for col, exp in criteria.items()]
+            return np.all(observed)
+
+        df[result] = df.apply(test, axis=1)
+        return df
+
+    def _smooth_survey_human(self, md):
+        """Add constant details, and normalize where necessary"""
+        sid = 1
+        humans = md[md.survey == sid]
+        if len(humans) == 0:
+            return md
+
+        with_invariant = self._smooth_survey_host_invariant(humans, is_human=True)
+        humans = pd.concat([humans, with_invariant])
+
+        # use of the str.cat from @JohnE in https://stackoverflow.com/a/26476883/19741
+        pivot = pd.pivot_table(humans, values='answer',
+                               index=['survey', 'participant_survey_id',
+                                      'barcode'],
+                               columns=['question'], aggfunc=lambda x: x.str.cat())
+
+        creations = [self._human_create_subset_antibiotic_history,
+                     self._human_create_subset_ibd,
+                     self._human_create_subset_diabetes,
+                     self._human_create_subset_age,
+
+                     # note: depends on prior subset creatios
+                     self._human_create_subset_healthy,
+
+                     self._human_create_economic_census_regions]
+        for f in creations:
+            pivot = f(pivot)
+
+        melted = pd.melt(pivot.reset_index(), value_name='answer',
+                         id_vars=['survey', 'participant_survey_id',
+                                  'barcode'])
+        return pd.concat([md, melted])
+
+        ### set description by sample type
+        # Human survey (id 1)
+
+        ###HUMAN_CATEGORIES_TO_FUNCTION = {
+        ###    ('HEIGHT_CM', ): _human_normalize_numeric,
+        ###    ('WEIGHT_KG', ): _human_normalize_numeric,
+        ###    ('GENDER', ): _human_create_sex,
+        ###    ('HEIGHT_UNITS', 'HEIGHT_CM'): _human_normalize_height,
+        ###    ('WEIGHT_UNITS', 'WEIGHT_KG'): _human_normalize_weight,
+        ###    ('HEIGHT_CM', 'WEIGHT_KG'): _human_create_bmi,
+        ###    ('BIRTH_MONTH', 'BIRTH_YEAR', 'sample_date'): _human_create_age_years_and_subset,
+        ###    ('ZIP_CODE', 'country'): _human_create_geocode,
+        ###    ('sample_time', 'sample_date'): _human_create_collection_timestamp,
+        ###    ('site_sampled', ): _human_set_site_specific_metadata,
+        ###    ('IBD_DIAGNOSIS_REFINED', ): _human_create_ibd_diagnosis,
+        ###    ('ALCOHOL_FREQUENCY', ): _human_create_alcohol_consumption,
+        ###    ('sample_date', ): _human_create_collection_season,
+        ###    ('STATE', ): _human_create_economic_census_regions,
+        ###    ('DIABETES', ): _human_create_subset_diabetes,
+        ###    ('IBD', ): _human_create_subset_ibd,
+        ###    ('ANTIBIOTIC_HISTORY', ): _human_create_subset_antibiotic_history,
+        ###    ('SUBSET_AGE', 'SUBSET_DIABETES', 'SUBSET_IBD', 'SUBSET_ANTIBIOTIC_HISTORY', 'SUBSET_BMI'): _human_create_subset_healthy,
+        ###    ('AGE_YEARS', 'HEIGHT_CM', 'WEIGHT_KG', 'ALCOHOL_CONSUMPTION'): _human_create_age_corrected_and_category,
+
+        ###for barcode, responses in md[1].items():
+        ###    bc_info = barcode_info[barcode[:9]]
+        ###    try:
+        ###        participant_name = dupes_lookup.get(
+        ###            md[1][barcode]['SURVEY_ID'],
+        ###            bc_info['participant_name']).lower()
+
+        ###        md[1][barcode]['HOST_SUBJECT_ID'] = sha512(
+        ###            bc_info['ag_login_id'] + participant_name).hexdigest()
+        ###        md[1][barcode]['PUBLIC'] = 'Yes'
+
+
+        ###        # Get rid of columns not wanted for pulldown
+        ###        if not full:
+        ###            for col in ebi_remove:
+        ###                try:
+        ###                    del md[1][barcode][col]
+        ###                except KeyError:
+        ###                    # Column doesn't exist already for survey
+        ###                    # (retired), so no removal needed
+        ###                    pass
+
+        ###        # Add the external surveys
+        ###        if unknown_external:
+        ###            md[1][barcode].update(external.get(md[1][barcode][
+        ###                'SURVEY_ID'], unknown_external))
+
+        ###        self._sync_with_data_dictionary(md[1][barcode], not_provided,
+        ###                                        not_applicable)
+        ###    except Exception as e:
+        ###        # Add barcode to error and remove from metadata info
+        ###        if isinstance(e, SSLError):
+        ###            errors[barcode] = repr(e)
+        ###        else:
+        ###            errors[barcode] = str(e.message.encode('utf-8'))
+        ###        del md[1][barcode]
+
+
+    def _integrate_barcode_information(self, md, barcode_info, full=False):
+        """Integrate barcoe information (e.g., sample time, type, etc)"""
+        zip_lookup = self._construct_zip_lookup(full)
+        country_lookup = self._construct_country_lookup()
+
+        distinct = md[['survey',
+                       'participant_survey_id',
+                       'barcode']]
+        distinct = distinct[~distinct.duplicated()]
+
+        to_add = []
+        for _, row in distinct.iterrows():
+            filler = list(row)
+
+            bc_info = barcode_info[row['barcode']]
+            sample_invariant = md_lookup[bc_info['site_sampled']]
+
+            for item in sample_invariant.items():
+                to_add.append(filler + list(item))
+
+            dt = bc_info['sample_date']
+            to_add.append(filler + ['COLLECTION_YEAR', dt.year])
+            to_add.append(filler + ['COLLECTION_MONTH', dt.month])
+            to_add.append(filler + ['COLLECTION_DAY', dt.day])
+            to_add.append(filler + ['COLLECTION_DATTE',
+                                    dt.strftime('%m/%d/%Y')])
+
+            tt = bc_info['sample_time']
+            if not tt:
+                tt = datetime.time(0, 0)
+            to_add.append(filler + ['COLLECTION_HOUR', tt.hour])
+            to_add.append(filler + ['COLLECTION_MINUTE', tt.minute])
+            to_add.append(filler + ['COLLECTION_TIME',
+                                    tt.strftime('%H:%M')])
+
+            ts = datetime.combine(dt, tt)
+            to_add.append(filler + ['COLLECTION_TIMESTAMP',
+                                    ts.strftime('%m/%d/%Y %H:%M')])
+
+            name = bc_info['participant_name']
+            loginid = bc_info['ag_login_id']
+            hsi = sha512(loginid + name).hexdigest()
+            to_add.append(filler + ['HOST_SUBJECT_ID', hsi])
+
+            # so not excited by this. this monkeying is necessary to reuse
+            # existing geocoder instead of rewriting it.
+
+            # the geocoder does not actually work. the country information
+            # contained in zip_lookup is inconsistent with the information
+            # in country look up. it seems that the entirety of the logic
+            # in _geocoder that was used was within its "except" block.
+            # the _geocoder needs to be rewritten. presently marking this
+            # as out of scope.
+            #zipcode = bc_info['ZIP_CODE'].upper()
+            #country = bc_info['country']
+            #inout = {'STATE': bc_info['STATE']}
+            #self._geocode(inout, zipcode, country, zip_lookup, country_lookup)
+            #for item in inout.items():
+            #    to_add.append(filler + list(item))
+
+        to_add = pd.DataFrame(to_add, columns=['survey',
+                                               'participant_survey_id',
+                                               'barcode',
+                                               'question',
+                                               'answer'])
+        return pd.concat([md, to_add], ignore_index=True)
 
     def format_survey_data(self, md, full=False):  # noqa
         """Modifies barcode metadata to include all columns and correct units
@@ -975,16 +1389,13 @@ class KniminAccess(object):
         all_barcodes = set(md['barcode'].unique())
         barcode_info = self.get_ag_barcode_details(all_barcodes)
 
-        zip_lookup = self._construct_zip_lookup(full)
-        country_lookup = self._construct_country_lookup()
+        #dupes_sql = """SELECT duplicate_survey_id, participant_name
+        #               FROM ag.duplicate_consents dc
+        #               JOIN ag.ag_login_surveys als USING (ag_login_id)
+        #               WHERE  dc.main_survey_id = als.survey_id"""
+        #dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
 
-
-        dupes_sql = """SELECT duplicate_survey_id, participant_name
-                       FROM ag.duplicate_consents dc
-                       JOIN ag.ag_login_surveys als USING (ag_login_id)
-                       WHERE  dc.main_survey_id = als.survey_id"""
-        dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
-
+        md = self._integrate_barcode_information(md, barcode_info, full)
         md = self._smooth_survey_yesno(md)
         md = self._smooth_survey_pets(md)
         md = self._smooth_survey_human(md)
@@ -992,212 +1403,6 @@ class KniminAccess(object):
         ### need general geocoding for both pets / human
                 #md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
                  #                              zip_lookup, country_lookup)
-
-        # Human survey (id 1)
-        for barcode, responses in md[1].items():
-            bc_info = barcode_info[barcode[:9]]
-            try:
-                # convert numeric fields
-                for field in ('HEIGHT_CM', 'WEIGHT_KG'):
-                    md[1][barcode][field] = sub('[^0-9.]',
-                                                '', md[1][barcode][field])
-                    try:
-                        md[1][barcode][field] = float(md[1][barcode][field])
-                    except ValueError:
-                        md[1][barcode][field] = not_provided
-
-                # Correct height units
-                if responses['HEIGHT_UNITS'] == 'inches' and \
-                        isinstance(md[1][barcode]['HEIGHT_CM'], float):
-                    md[1][barcode]['HEIGHT_CM'] = \
-                        2.54*md[1][barcode]['HEIGHT_CM']
-                md[1][barcode]['HEIGHT_UNITS'] = 'centimeters'
-
-                # Correct weight units
-                if responses['WEIGHT_UNITS'] == 'pounds' and \
-                        isinstance(md[1][barcode]['WEIGHT_KG'], float):
-                    md[1][barcode]['WEIGHT_KG'] = \
-                        md[1][barcode]['WEIGHT_KG']/2.20462
-                md[1][barcode]['WEIGHT_UNITS'] = 'kilograms'
-
-                if all([isinstance(md[1][barcode]['WEIGHT_KG'], float),
-                        md[1][barcode]['WEIGHT_KG'] != 0.0,
-                        isinstance(md[1][barcode]['HEIGHT_CM'], float),
-                        md[1][barcode]['HEIGHT_CM'] != 0.0]):
-                    md[1][barcode]['BMI'] = md[1][barcode]['WEIGHT_KG'] / \
-                        (md[1][barcode]['HEIGHT_CM']/100)**2
-                else:
-                    md[1][barcode]['BMI'] = not_provided
-                    md[1][barcode]['HEIGHT_CM'] = not_provided
-                    md[1][barcode]['WEIGHT_KG'] = not_provided
-
-                # Get age in years (int) and remove birth month
-                if responses['BIRTH_MONTH'] != 'Unspecified' and \
-                        responses['BIRTH_YEAR'] != 'Unspecified':
-                    birthdate = datetime(
-                        int(responses['BIRTH_YEAR']),
-                        int(month_int_lookup[responses['BIRTH_MONTH']]), 1)
-                    age_in_month = self._months_between_dates(
-                        birthdate, datetime(bc_info['sample_date'].year,
-                                            bc_info['sample_date'].month,
-                                            bc_info['sample_date'].day))
-                    md[1][barcode]['AGE_YEARS'] = int(age_in_month / 12.0)
-                else:
-                    md[1][barcode]['AGE_YEARS'] = not_provided
-                    md[1][barcode]['BIRTH_MONTH'] = not_provided
-                    md[1][barcode]['BIRTH_YEAR'] = not_provided
-
-                # GENDER to SEX
-                sex = md[1][barcode]['GENDER']
-                if sex is not None:
-                    sex = sex.lower()
-                else:
-                    sex = not_provided
-                md[1][barcode]['SEX'] = sex
-
-                # convenience variable
-                site = bc_info['site_sampled']
-
-                # Invariant information
-                md[1][barcode]['ANONYMIZED_NAME'] = barcode
-                md[1][barcode]['HOST_TAXID'] = 9606
-                md[1][barcode]['SCIENTIFIC_NAME'] = 'Homo sapiens'
-                md[1][barcode]['TITLE'] = 'American Gut Project'
-                md[1][barcode]['ASSIGNED_FROM_GEO'] = 'true'
-                md[1][barcode]['ENV_BIOME'] = 'dense settlement biome'
-                md[1][barcode]['ENV_FEATURE'] = 'human-associated habitat'
-                md[1][barcode]['DNA_EXTRACTED'] = 'true'
-                md[1][barcode]['PHYSICAL_SPECIMEN_REMAINING'] = 'true'
-                md[1][barcode]['PHYSICAL_SPECIMEN_LOCATION'] = 'UCSDMI'
-                md[1][barcode]['HOST_COMMON_NAME'] = 'human'
-                md[1][barcode]['DEPTH'] = not_applicable
-                md[1][barcode]['ALTITUDE'] = not_applicable
-                md[1][barcode]['HAS_PHYSICAL_SPECIMEN'] = not_applicable
-
-                # Sample-dependent information
-                zipcode = md[1][barcode]['ZIP_CODE'].upper()
-                country = bc_info['country']
-                md[1][barcode] = self._geocode(
-                    md[1][barcode], zipcode, country, zip_lookup,
-                    country_lookup)
-
-                md[1][barcode]['SURVEY_ID'] = survey_lookup[barcode[:9]]
-                md[1][barcode].update(md_lookup[site])
-                md[1][barcode]['COLLECTION_DATE'] = \
-                    bc_info['sample_date'].strftime('%m/%d/%Y')
-
-                if bc_info['sample_time']:
-                    md[1][barcode]['COLLECTION_TIME'] = \
-                        bc_info['sample_time'].strftime('%H:%M')
-                else:
-                    # If no time data, show unspecified and default to midnight
-                    md[1][barcode]['COLLECTION_TIME'] = not_provided
-                    bc_info['sample_time'] = time(0, 0)
-
-                md[1][barcode]['COLLECTION_TIMESTAMP'] = datetime.combine(
-                    bc_info['sample_date'],
-                    bc_info['sample_time']).strftime('%m/%d/%Y %H:%M')
-
-                participant_name = dupes_lookup.get(
-                    md[1][barcode]['SURVEY_ID'],
-                    bc_info['participant_name']).lower()
-
-                md[1][barcode]['HOST_SUBJECT_ID'] = sha512(
-                    bc_info['ag_login_id'] + participant_name).hexdigest()
-                md[1][barcode]['PUBLIC'] = 'Yes'
-
-                # Convert finer grained IBD to coarser grained
-                ibd = md[1][barcode].get('IBD_DIAGNOSIS_REFINED',
-                                         not_provided)
-                if ibd != not_provided:
-                    if ibd in {"Ileal Crohn's Disease",
-                               "Colonic Crohn's Disease",
-                               "Ileal and Colonic Crohn's Disease"}:
-                        md[1][barcode]['IBD_DIAGNOSIS'] = "Crohn's disease"
-                    elif ibd == 'Ulcerative colitis':
-                        md[1][barcode]['IBD_DIAGNOSIS'] = 'Ulcerative colitis'
-
-                # Add categorization columns
-                md[1][barcode]['ALCOHOL_CONSUMPTION'] = categorize_etoh(
-                    md[1][barcode]['ALCOHOL_FREQUENCY'], not_provided)
-                md[1][barcode]['BMI_CAT'] = categorize_bmi(
-                    md[1][barcode]['BMI'], not_provided)
-                md[1][barcode]['BMI_CORRECTED'] = correct_bmi(
-                    md[1][barcode]['BMI'], not_provided)
-                md[1][barcode]['COLLECTION_SEASON'] = season_lookup[
-                    bc_info['sample_date'].month]
-                state = md[1][barcode]['STATE']
-                try:
-                    md[1][barcode]['CENSUS_REGION'] = \
-                        regions_by_state[state]['Census_1']
-                    md[1][barcode]['ECONOMIC_REGION'] = \
-                        regions_by_state[state]['Economic']
-                except KeyError:
-                    md[1][barcode]['CENSUS_REGION'] = not_provided
-                    md[1][barcode]['ECONOMIC_REGION'] = not_provided
-                md[1][barcode]['SUBSET_AGE'] = \
-                    19 < md[1][barcode]['AGE_YEARS'] < 70 and \
-                    not md[1][barcode]['AGE_YEARS'] == not_provided
-                md[1][barcode]['SUBSET_DIABETES'] = \
-                    (md[1][barcode]['DIABETES'] ==
-                        'I do not have this condition')
-                md[1][barcode]['SUBSET_IBD'] = \
-                    md[1][barcode]['IBD'] == 'I do not have this condition'
-                md[1][barcode]['SUBSET_ANTIBIOTIC_HISTORY'] = \
-                    (md[1][barcode]['ANTIBIOTIC_HISTORY'] ==
-                     'I have not taken antibiotics in the past year.')
-                md[1][barcode]['SUBSET_BMI'] = \
-                    18.5 <= md[1][barcode]['BMI'] < 30 and \
-                    not md[1][barcode]['BMI'] == not_provided
-                md[1][barcode]['SUBSET_HEALTHY'] = all([
-                    md[1][barcode]['SUBSET_AGE'],
-                    md[1][barcode]['SUBSET_DIABETES'],
-                    md[1][barcode]['SUBSET_IBD'],
-                    md[1][barcode]['SUBSET_ANTIBIOTIC_HISTORY'],
-                    md[1][barcode]['SUBSET_BMI']])
-                md[1][barcode]['COLLECTION_MONTH'] = month_str_lookup.get(
-                    bc_info['sample_date'].month, not_provided)
-                md[1][barcode]['AGE_CORRECTED'] = correct_age(
-                    md[1][barcode]['AGE_YEARS'], md[1][barcode]['HEIGHT_CM'],
-                    md[1][barcode]['WEIGHT_KG'],
-                    md[1][barcode]['ALCOHOL_CONSUMPTION'], not_provided)
-                md[1][barcode]['AGE_CAT'] = categorize_age(
-                    md[1][barcode]['AGE_CORRECTED'], not_provided)
-
-                # make sure conversions are done
-                if md[1][barcode]['WEIGHT_KG'] != not_provided:
-                    md[1][barcode]['WEIGHT_KG'] = int(
-                        md[1][barcode]['WEIGHT_KG'])
-                if md[1][barcode]['HEIGHT_CM'] != not_provided:
-                    md[1][barcode]['HEIGHT_CM'] = int(
-                        md[1][barcode]['HEIGHT_CM'])
-                if md[1][barcode]['BMI'] != not_provided:
-                    md[1][barcode]['BMI'] = '%.2f' % md[1][barcode]['BMI']
-
-                # Get rid of columns not wanted for pulldown
-                if not full:
-                    for col in ebi_remove:
-                        try:
-                            del md[1][barcode][col]
-                        except KeyError:
-                            # Column doesn't exist already for survey
-                            # (retired), so no removal needed
-                            pass
-
-                # Add the external surveys
-                if unknown_external:
-                    md[1][barcode].update(external.get(md[1][barcode][
-                        'SURVEY_ID'], unknown_external))
-
-                self._sync_with_data_dictionary(md[1][barcode], not_provided,
-                                                not_applicable)
-            except Exception as e:
-                # Add barcode to error and remove from metadata info
-                if isinstance(e, SSLError):
-                    errors[barcode] = repr(e)
-                else:
-                    errors[barcode] = str(e.message.encode('utf-8'))
-                del md[1][barcode]
 
         for survey in md:
             for barcode, responses in md[survey].items():

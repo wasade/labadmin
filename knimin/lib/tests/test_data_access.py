@@ -4,6 +4,7 @@ from six import StringIO
 import datetime
 
 import numpy as np
+from hashlib import sha512
 import pandas.util.testing as pdt
 import pandas as pd
 
@@ -79,9 +80,82 @@ class TestDataAccess(TestCase):
                                     'answer'])
         obs = db._smooth_survey_pets(df)
         self.assertEqual(len(obs[obs.survey == 1]), 2)
-        self.assertEqual(len(obs[obs.barcode == '123459']), 13)
-        self.assertEqual(len(obs[obs.barcode == '123456789']), 27)
-        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 14)
+        self.assertEqual(len(obs[obs.barcode == '123459']), 16)
+        self.assertEqual(len(obs[obs.barcode == '123456789']), 33)
+        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 17)
+        env_feature = obs[obs.question == 'ENV_FEATURE']
+        self.assertEqual(env_feature.answer.value_counts().to_dict(),
+                        {'animal-associated habitat': 3})
+
+    def test_smooth_survey_host_invariant(self):
+        df = pd.DataFrame([], columns=['survey',
+                                       'participant_survey_id',
+                                       'barcode',
+                                       'question',
+                                       'answer'])
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._smooth_survey_host_invariant(df, is_human=True)
+        pdt.assert_frame_equal(df, exp)
+
+        df = pd.DataFrame([(2, 'abcd', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo2', 'bar2'),
+                           (2, 'wxyz', '123459', 'foo3', 'bar3'),
+                           (1, 'abcd', '111119', 'foo', 'bar'),
+                           (1, 'xxx', '126789', 'foo', 'bar')],
+                           columns=['survey',
+                                    'participant_survey_id',
+                                    'barcode',
+                                    'question',
+                                    'answer'])
+
+        # note that smooth_survey_host_invariant returns _only_ the rows to
+        # be added
+        obs = db._smooth_survey_host_invariant(df[df.survey == 1],
+                                               is_human=True)
+
+        self.assertEqual(len(obs[obs.survey == 1]), 30)
+        self.assertEqual(len(obs[obs.barcode == '123459']), 0)
+        self.assertEqual(len(obs[obs.barcode == '123456789']), 0)
+        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 15)
+        env_feature = obs[obs.question == 'ENV_FEATURE']
+        self.assertEqual(env_feature.answer.value_counts().to_dict(),
+                        {'human-associated habitat': 2})
+
+    def test_smooth_survey_human(self):
+        df = pd.DataFrame([], columns=['survey',
+                                       'participant_survey_id',
+                                       'barcode',
+                                       'question',
+                                       'answer'])
+        exp = pd.DataFrame([], columns=['survey',
+                                        'participant_survey_id',
+                                        'barcode',
+                                        'question',
+                                        'answer'])
+        obs = db._smooth_survey_human(df)
+        pdt.assert_frame_equal(df, exp)
+
+        df = pd.DataFrame([(2, 'abcd', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo', 'bar'),
+                           (2, 'wxyz', '123456789', 'foo2', 'bar2'),
+                           (2, 'wxyz', '123459', 'foo3', 'bar3'),
+                           (1, 'abcd', '111119', 'foo', 'bar'),
+                           (1, 'xxx', '126789', 'foo', 'bar')],
+                           columns=['survey',
+                                    'participant_survey_id',
+                                    'barcode',
+                                    'question',
+                                    'answer'])
+        obs = db._smooth_survey_human(df)
+        self.assertEqual(sorted(obs.columns), sorted(df.columns))
+
+        exp = "This needs to be defined"
+        pdt.assert_frame_equal(df, exp)
 
     def test_smooth_survey_yesno(self):
         df = pd.DataFrame([], columns=['survey',
@@ -132,6 +206,301 @@ class TestDataAccess(TestCase):
                                     'answer'])
         db._smooth_survey_yesno(df)
         pdt.assert_frame_equal(df, exp)
+
+    def test_human_create_subset_age(self):
+        exp = pd.DataFrame([(1, 2, 3, 4), (5, 6, 7, 8)], columns=list('abcd'))
+        obs = db._human_create_subset_age(exp.copy())
+        pdt.assert_frame_equal(obs, exp)
+        exp = pd.DataFrame([(1, 2, 3, 4, 15, False),
+                            (5, 6, 7, 8, 20, True),
+                            (5, 6, 7, 8, 30, True),
+                            (5, 6, 7, 8, 90, False)],
+                            columns=list('abcd') + ['AGE_YEARS', 'SUBSET_AGE'])
+        obs = db._human_create_subset_age(exp.copy())
+        pdt.assert_frame_equal(obs, exp)
+
+    def test_human_create_subset_column(self):
+        exp = pd.DataFrame([(1, 2, 3, 4), (5, 6, 7, 8)], columns=list('abcd'))
+        obs = db._human_create_subset_column(exp.copy(),
+                                             'foo', {'thing': 'yes'})
+        pdt.assert_frame_equal(obs, exp)
+
+        df = pd.DataFrame([[80, True, True, True, True, True, 'y'],
+                           [15, False, True, True, True, True, np.nan],
+                           [np.nan] * 7,
+                           [np.nan, True, True, True, True, True, False],
+                           [np.nan, True, True, True, False, True, False],
+                           [np.nan, True, True, np.nan, True, True, False]],
+                           columns=['foo', 'SUBSET_AGE',
+                                    'SUBSET_DIABETES',
+                                    'SUBSET_IBD',
+                                    'SUBSET_ANTIBIOTIC_HISTORY',
+                                    'SUBSET_BMI', 'bar'])
+
+        exp = pd.DataFrame([[80, True, True, True, True, True, 'y', True],
+                            [15, False, True, True, True, True, np.nan, False],
+                            [np.nan] * 7 + [False],
+                            [np.nan, True, True, True, True, True, False,
+                             True],
+                            [np.nan, True, True, True, False, True, False,
+                             False],
+                            [np.nan, True, True, np.nan, True, True, False,
+                             False]],
+                            columns=['foo', 'SUBSET_AGE',
+                                     'SUBSET_DIABETES',
+                                     'SUBSET_IBD',
+                                     'SUBSET_ANTIBIOTIC_HISTORY',
+                                     'SUBSET_BMI', 'bar',
+                                     'SUBSET_HEALTHY'])
+
+        obs = db._human_create_subset_column(df.copy(), 'SUBSET_HEALTHY',
+                                             {'SUBSET_AGE': True,
+                                              'SUBSET_DIABETES': True,
+                                              'SUBSET_IBD': True,
+                                              'SUBSET_ANTIBIOTIC_HISTORY': True,
+                                              'SUBSET_BMI': True})
+        pdt.assert_frame_equal(obs, exp, check_column_type=False, check_dtype=False)
+
+    def test_integrate_barcode_information(self):
+        df = pd.DataFrame([(1, 'abcd', '123456789', 'foo', 'bar'),
+                           (2, 'abcd', '223456789', 'foo', 'bar'),
+                           (3, 'xbcd', '223456789', 'foo', 'bar'),
+                           (4, 'abcd', '223456789', 'foo', 'bar'),
+                           (5, 'abcd', '523456789', 'foo', 'yes'),
+                           (5, 'abcd', '523456789', 'foo', 'Yes'),
+                           (1, 'abcd', '823456789', 'foo', 'bar')],
+                          columns=['survey',
+                                   'participant_survey_id',
+                                   'barcode',
+                                   'question',
+                                   'answer'])
+
+        barcode_info = {'123456789': {'sample_date': datetime.datetime(1970, 1, 4),
+                                      'sample_time': datetime.time(1, 3),
+                                      'site_sampled': 'Stool',
+                                      'participant_name': 'bob',
+                                      'country': 'USA',
+                                      'ZIP_CODE': '12345',
+                                      'STATE': 'MA',
+                                      'ag_login_id': 'x',
+                                      },
+                        '223456789': {'sample_date': datetime.datetime(1975, 2, 3),
+                                      'sample_time': datetime.time(2, 4),
+                                      'site_sampled': 'Forehead',
+                                      'participant_name': 'fred',
+                                      'country': 'Canada',
+                                      'ZIP_CODE': '12345',
+                                      'STATE': 'WA',
+                                      'ag_login_id': 'y',
+                                      },
+                        '523456789': {'sample_date': datetime.datetime(1980, 3, 2),
+                                      'sample_time': datetime.time(3, 5),
+                                      'site_sampled': 'Mouth',
+                                      'participant_name': 'derf',
+                                      'country': 'USA',
+                                      'ZIP_CODE': '12345',
+                                      'STATE': 'PA',
+                                      'ag_login_id': 'z',
+                                      },
+                        '823456789': {'sample_date': datetime.datetime(1985, 4, 1),
+                                      'sample_time': datetime.time(4, 6),
+                                      'site_sampled': 'Stool',
+                                      'participant_name': 'derp',
+                                      'country': 'USA',
+                                      'ZIP_CODE': '12345',
+                                      'STATE': 'CA',
+                                      'ag_login_id': 'w',
+                                      }
+                        }
+
+        exp = pd.DataFrame([(1, 'abcd', '123456789', 'foo', 'bar'),
+                            (1, 'abcd', '123456789', 'HOST_SUBJECT_ID', sha512('x' + 'bob').hexdigest()),
+                            (2, 'abcd', '223456789', 'HOST_SUBJECT_ID', sha512('y' + 'fred').hexdigest()),
+                            (3, 'xbcd', '223456789', 'HOST_SUBJECT_ID', sha512('y' + 'fred').hexdigest()),
+                            (4, 'abcd', '223456789', 'HOST_SUBJECT_ID', sha512('y' + 'fred').hexdigest()),
+                            (5, 'abcd', '523456789', 'HOST_SUBJECT_ID', sha512('z' + 'derf').hexdigest()),
+                            (1, 'abcd', '823456789', 'HOST_SUBJECT_ID', sha512('w' + 'derp').hexdigest()),
+
+                            (1, 'abcd', '123456789', 'ZIP_CODE', '12345'),
+                            (2, 'abcd', '223456789', 'ZIP_CODE', '12345'),
+                            (3, 'xbcd', '223456789', 'ZIP_CODE', '12345'),
+                            (4, 'abcd', '223456789', 'ZIP_CODE', '12345'),
+                            (5, 'abcd', '523456789', 'ZIP_CODE', '12345'),
+                            (1, 'abcd', '823456789', 'ZIP_CODE', '12345'),
+
+                            (1, 'abcd', '123456789', 'STATE', 'MA'),
+                            (2, 'abcd', '223456789', 'STATE', 'WA'),
+                            (3, 'xbcd', '223456789', 'STATE', 'WA'),
+                            (4, 'abcd', '223456789', 'STATE', 'WA'),
+                            (5, 'abcd', '523456789', 'STATE', 'PA'),
+                            (1, 'abcd', '823456789', 'STATE', 'CA'),
+
+                            (1, 'abcd', '123456789', 'COUNTRY', 'USA'),
+                            (2, 'abcd', '223456789', 'COUNTRY', 'USA'),
+                            (3, 'xbcd', '223456789', 'COUNTRY', 'USA'),
+                            (4, 'abcd', '223456789', 'COUNTRY', 'USA'),
+                            (5, 'abcd', '523456789', 'COUNTRY', 'USA'),
+                            (1, 'abcd', '823456789', 'COUNTRY', 'USA'),
+
+                            (1, 'abcd', '123456789', 'COUNTRY', "Unspecified"),
+                            (2, 'abcd', '223456789', 'COUNTRY', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'COUNTRY', "Unspecified"),
+                            (4, 'abcd', '223456789', 'COUNTRY', "Unspecified"),
+                            (5, 'abcd', '523456789', 'COUNTRY', "Unspecified"),
+                            (1, 'abcd', '823456789', 'COUNTRY', "Unspecified"),
+                            (1, 'abcd', '123456789', 'STATE', "Unspecified"),
+                            (2, 'abcd', '223456789', 'STATE', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'STATE', "Unspecified"),
+                            (4, 'abcd', '223456789', 'STATE', "Unspecified"),
+                            (5, 'abcd', '523456789', 'STATE', "Unspecified"),
+                            (1, 'abcd', '823456789', 'STATE', "Unspecified"),
+                            (1, 'abcd', '123456789', 'LONGITUDE', "Unspecified"),
+                            (2, 'abcd', '223456789', 'LONGITUDE', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'LONGITUDE', "Unspecified"),
+                            (4, 'abcd', '223456789', 'LONGITUDE', "Unspecified"),
+                            (5, 'abcd', '523456789', 'LONGITUDE', "Unspecified"),
+                            (1, 'abcd', '823456789', 'LONGITUDE', "Unspecified"),
+                            (1, 'abcd', '123456789', 'LATITUDE', "Unspecified"),
+                            (2, 'abcd', '223456789', 'LATITUDE', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'LATITUDE', "Unspecified"),
+                            (4, 'abcd', '223456789', 'LATITUDE', "Unspecified"),
+                            (5, 'abcd', '523456789', 'LATITUDE', "Unspecified"),
+                            (1, 'abcd', '823456789', 'LATITUDE', "Unspecified"),
+                            (1, 'abcd', '123456789', 'ELEVATION', "Unspecified"),
+                            (2, 'abcd', '223456789', 'ELEVATION', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'ELEVATION', "Unspecified"),
+                            (4, 'abcd', '223456789', 'ELEVATION', "Unspecified"),
+                            (5, 'abcd', '523456789', 'ELEVATION', "Unspecified"),
+                            (1, 'abcd', '823456789', 'ELEVATION', "Unspecified"),
+                            (1, 'abcd', '123456789', 'GEO_LOC_NAME', "Unspecified"),
+                            (2, 'abcd', '223456789', 'GEO_LOC_NAME', "Unspecified"),
+                            (3, 'xbcd', '223456789', 'GEO_LOC_NAME', "Unspecified"),
+                            (4, 'abcd', '223456789', 'GEO_LOC_NAME', "Unspecified"),
+                            (5, 'abcd', '523456789', 'GEO_LOC_NAME', "Unspecified"),
+                            (1, 'abcd', '823456789', 'GEO_LOC_NAME', "Unspecified"),
+
+
+                            (1, 'abcd', '123456789', 'COLLECTION_YEAR', 1970),
+                            (2, 'abcd', '223456789', 'COLLECTION_YEAR', 1975),
+                            (3, 'xbcd', '223456789', 'COLLECTION_YEAR', 1975),
+                            (4, 'abcd', '223456789', 'COLLECTION_YEAR', 1975),
+                            (5, 'abcd', '523456789', 'COLLECTION_YEAR', 1980),
+                            (1, 'abcd', '823456789', 'COLLECTION_YEAR', 1985),
+                            (1, 'abcd', '123456789', 'COLLECTION_MONTH', 1),
+                            (2, 'abcd', '223456789', 'COLLECTION_MONTH', 2),
+                            (3, 'xbcd', '223456789', 'COLLECTION_MONTH', 2),
+                            (4, 'abcd', '223456789', 'COLLECTION_MONTH', 2),
+                            (5, 'abcd', '523456789', 'COLLECTION_MONTH', 3),
+                            (1, 'abcd', '823456789', 'COLLECTION_MONTH', 4),
+                            (1, 'abcd', '123456789', 'COLLECTION_DAY', 4),
+                            (2, 'abcd', '223456789', 'COLLECTION_DAY', 3),
+                            (3, 'xbcd', '223456789', 'COLLECTION_DAY', 3),
+                            (4, 'abcd', '223456789', 'COLLECTION_DAY', 3),
+                            (5, 'abcd', '523456789', 'COLLECTION_DAY', 2),
+                            (1, 'abcd', '823456789', 'COLLECTION_DAY', 1),
+                            (1, 'abcd', '123456789', 'COLLECTION_HOUR', 1),
+                            (2, 'abcd', '223456789', 'COLLECTION_HOUR', 2),
+                            (3, 'xbcd', '223456789', 'COLLECTION_HOUR', 2),
+                            (4, 'abcd', '223456789', 'COLLECTION_HOUR', 2),
+                            (5, 'abcd', '523456789', 'COLLECTION_HOUR', 3),
+                            (1, 'abcd', '823456789', 'COLLECTION_HOUR', 4),
+                            (1, 'abcd', '123456789', 'COLLECTION_MINUTE', 3),
+                            (2, 'abcd', '223456789', 'COLLECTION_MINUTE', 4),
+                            (3, 'xbcd', '223456789', 'COLLECTION_MINUTE', 4),
+                            (4, 'abcd', '223456789', 'COLLECTION_MINUTE', 4),
+                            (5, 'abcd', '523456789', 'COLLECTION_MINUTE', 5),
+                            (1, 'abcd', '823456789', 'COLLECTION_MINUTE', 6),
+                            (2, 'abcd', '223456789', 'foo', 'bar'),
+                            (3, 'xbcd', '223456789', 'foo', 'bar'),
+                            (4, 'abcd', '223456789', 'foo', 'bar'),
+                            (5, 'abcd', '523456789', 'foo', 'yes'),
+                            (5, 'abcd', '523456789', 'foo', 'Yes'),
+                            (1, 'abcd', '823456789', 'foo', 'bar'),
+                            (1, 'abcd', '123456789', 'BODY_PRODUCT', 'UBERON:feces'),
+                            (1, 'abcd', '123456789', 'SAMPLE_TYPE', 'Stool'),
+                            (1, 'abcd', '123456789', 'SCIENTIFIC_NAME', 'human gut metagenome'),
+                            (1, 'abcd', '123456789', 'TAXON_ID', '408170'),
+                            (1, 'abcd', '123456789', 'BODY_HABITAT', 'UBERON:feces'),
+                            (1, 'abcd', '123456789', 'ENV_MATERIAL', 'feces'),
+                            (1, 'abcd', '123456789', 'ENV_PACKAGE', 'human-gut'),
+                            (1, 'abcd', '123456789', 'DESCRIPTION', 'American Gut Project Stool Sample'),
+                            (1, 'abcd', '123456789', 'BODY_SITE', 'UBERON:feces'),
+                            (2, 'abcd', '223456789', 'BODY_PRODUCT', 'UBERON:sebum'),
+                            (2, 'abcd', '223456789', 'SAMPLE_TYPE', 'Forehead'),
+                            (2, 'abcd', '223456789', 'SCIENTIFIC_NAME', 'human skin metagenome'),
+                            (2, 'abcd', '223456789', 'TAXON_ID', '539655'),
+                            (2, 'abcd', '223456789', 'BODY_HABITAT', 'UBERON:skin'),
+                            (2, 'abcd', '223456789', 'ENV_MATERIAL', 'sebum'),
+                            (2, 'abcd', '223456789', 'ENV_PACKAGE', 'human-skin'),
+                            (2, 'abcd', '223456789', 'DESCRIPTION', 'American Gut Project Forehead Sample'),
+                            (2, 'abcd', '223456789', 'BODY_SITE', 'UBERON:skin of head'),
+                            (3, 'xbcd', '223456789', 'BODY_PRODUCT', 'UBERON:sebum'),
+                            (3, 'xbcd', '223456789', 'SAMPLE_TYPE', 'Forehead'),
+                            (3, 'xbcd', '223456789', 'SCIENTIFIC_NAME', 'human skin metagenome'),
+                            (3, 'xbcd', '223456789', 'TAXON_ID', '539655'),
+                            (3, 'xbcd', '223456789', 'BODY_HABITAT', 'UBERON:skin'),
+                            (3, 'xbcd', '223456789', 'ENV_MATERIAL', 'sebum'),
+                            (3, 'xbcd', '223456789', 'ENV_PACKAGE', 'human-skin'),
+                            (3, 'xbcd', '223456789', 'DESCRIPTION', 'American Gut Project Forehead Sample'),
+                            (3, 'xbcd', '223456789', 'BODY_SITE', 'UBERON:skin of head'),
+                            (4, 'abcd', '223456789', 'BODY_PRODUCT', 'UBERON:sebum'),
+                            (4, 'abcd', '223456789', 'SAMPLE_TYPE', 'Forehead'),
+                            (4, 'abcd', '223456789', 'SCIENTIFIC_NAME', 'human skin metagenome'),
+                            (4, 'abcd', '223456789', 'TAXON_ID', '539655'),
+                            (4, 'abcd', '223456789', 'BODY_HABITAT', 'UBERON:skin'),
+                            (4, 'abcd', '223456789', 'ENV_MATERIAL', 'sebum'),
+                            (4, 'abcd', '223456789', 'ENV_PACKAGE', 'human-skin'),
+                            (4, 'abcd', '223456789', 'DESCRIPTION', 'American Gut Project Forehead Sample'),
+                            (4, 'abcd', '223456789', 'BODY_SITE', 'UBERON:skin of head'),
+                            (5, 'abcd', '523456789', 'BODY_PRODUCT', 'UBERON:saliva'),
+                            (5, 'abcd', '523456789', 'SAMPLE_TYPE', 'Mouth'),
+                            (5, 'abcd', '523456789', 'SCIENTIFIC_NAME', 'human oral metagenome'),
+                            (5, 'abcd', '523456789', 'TAXON_ID', '447426'),
+                            (5, 'abcd', '523456789', 'BODY_HABITAT', 'UBERON:oral cavity'),
+                            (5, 'abcd', '523456789', 'ENV_MATERIAL', 'saliva'),
+                            (5, 'abcd', '523456789', 'ENV_PACKAGE', 'human-oral'),
+                            (5, 'abcd', '523456789', 'DESCRIPTION', 'American Gut Project Mouth Sample'),
+                            (5, 'abcd', '523456789', 'BODY_SITE', 'UBERON:tongue'),
+                            (1, 'abcd', '823456789', 'BODY_PRODUCT', 'UBERON:feces'),
+                            (1, 'abcd', '823456789', 'SAMPLE_TYPE', 'Stool'),
+                            (1, 'abcd', '823456789', 'SCIENTIFIC_NAME', 'human gut metagenome'),
+                            (1, 'abcd', '823456789', 'TAXON_ID', '408170'),
+                            (1, 'abcd', '823456789', 'BODY_HABITAT', 'UBERON:feces'),
+                            (1, 'abcd', '823456789', 'ENV_MATERIAL', 'feces'),
+                            (1, 'abcd', '823456789', 'ENV_PACKAGE', 'human-gut'),
+                            (1, 'abcd', '823456789', 'DESCRIPTION', 'American Gut Project Stool Sample'),
+                            (1, 'abcd', '823456789', 'BODY_SITE', 'UBERON:feces')],
+                           columns=['survey',
+                                    'participant_survey_id',
+                                    'barcode',
+                                    'question',
+                                    'answer'])
+        order = ['survey', 'participant_survey_id', 'barcode', 'question',]
+        obs = db._integrate_barcode_information(df, barcode_info)
+
+        obs = obs.sort_values(order)
+        exp = exp.sort_values(order)
+
+        # couldn't manage to ignore the index which does not contain useful
+        # information, so explicitly resetting
+        obs.index = range(len(obs))
+        exp.index = range(len(exp))
+
+        # NOTE: this test will fail until the geocoder works.
+        pdt.assert_frame_equal(obs, exp)
+
+    def test_human_create_economic_census_regions(self):
+        df = pd.DataFrame([[80, 'CA'],
+                           [15, np.nan],
+                           [np.nan, 'UK']],
+                           columns=['foo', 'STATE'])
+        exp = pd.DataFrame([[80, 'CA', 'West', 'Far West'],
+                            [15, np.nan, 'Not provided', 'Not provided'],
+                            [np.nan, 'UK', 'Not provided', 'Not provided']],
+                            columns=['foo', 'STATE', 'CENSUS_REGION',
+                                     'ECONOMIC_REGION'])
+        obs = db._human_create_economic_census_regions(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
 
     def test_get_vioscreen_survey_answers(self):
         exp = pd.DataFrame([], columns=['survey',
