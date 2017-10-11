@@ -226,9 +226,45 @@ class TestDataAccess(TestCase):
     def test_human_normalize_numeric(self):
         self.fail()
     def test_human_normalize_height(self):
-        self.fail()
+        df = pd.DataFrame([[10, 'inches'],
+                           [20, 'centimeters'],
+                           [None, 'inches'],
+                           ['', 'inches'],
+                           [np.nan, 'inches'],
+                           [np.nan, 'centimeters']],
+                          columns=['HEIGHT_CM', 'HEIGHT_UNITS'])
+        exp = df.copy()
+        exp['HEIGHT_CM'] = [10 * 2.54, 20, None, '', np.nan, np.nan]
+        exp['HEIGHT_UNITS'] = ['centimeters',
+                               'centimeters',
+                               'centimeters',
+                               'centimeters',
+                               'centimeters',
+                               'centimeters']
+
+        obs = db._human_normalize_height(df)
+        pdt.assert_frame_equal(obs, exp)
+
+
     def test_human_normalize_weight(self):
-        self.fail()
+        df = pd.DataFrame([[10, 'pounds'],
+                           [20, 'kilograms'],
+                           [None, 'pounds'],
+                           ['', 'pounds'],
+                           [np.nan, 'pounds'],
+                           [np.nan, 'kilograms']],
+                          columns=['WEIGHT_KG', 'WEIGHT_UNITS'])
+        exp = df.copy()
+        exp['WEIGHT_KG'] = [10 / 2.20462, 20, None, '', np.nan, np.nan]
+        exp['WEIGHT_UNITS'] = ['kilograms',
+                               'kilograms',
+                               'kilograms',
+                               'kilograms',
+                               'kilograms',
+                               'kilograms']
+
+        obs = db._human_normalize_weight(df)
+        pdt.assert_frame_equal(obs, exp)
 
     def test_human_create_bmi(self):
         df = pd.DataFrame([[50, 10],

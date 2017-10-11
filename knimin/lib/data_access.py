@@ -982,15 +982,16 @@ class KniminAccess(object):
             md[1][barcode]['HEIGHT_CM'] = int(
                 md[1][barcode]['HEIGHT_CM'])
 
-    def _human_normalize_height():
-        raise obviously
-        # Correct height units
-        if responses['HEIGHT_UNITS'] == 'inches' and \
-                isinstance(md[1][barcode]['HEIGHT_CM'], float):
-            md[1][barcode]['HEIGHT_CM'] = \
-                2.54*md[1][barcode]['HEIGHT_CM']
-        md[1][barcode]['HEIGHT_UNITS'] = 'centimeters'
+    def _human_normalize_height(self, df):
+        """Normalize height to CM"""
+        inches = df['HEIGHT_UNITS'] == 'inches'
+        height = ~(df['HEIGHT_CM'].isin(['', np.nan, 'Not provided']))
+        to_normalize = inches & height
 
+        subset = df[to_normalize]
+        df.loc[to_normalize, 'HEIGHT_CM'] = subset['HEIGHT_CM'] * 2.54
+        df.loc[inches, 'HEIGHT_UNITS'] = 'centimeters'
+        return df
 
     def _human_normalize_weight(self, df):
         """Normalize weight to KG"""
@@ -999,15 +1000,10 @@ class KniminAccess(object):
         to_normalize = pounds & weight
 
         subset = df[to_normalize]
-        df.iloc[to_normalize, 'WEIGHT_KG'] = subset['WEIGHT_KG'] / 2.20462
+        df.loc[to_normalize, 'WEIGHT_KG'] = subset['WEIGHT_KG'] / 2.20462
+        df.loc[pounds, 'WEIGHT_UNITS'] = 'kilograms'
 
-
-        # Correct weight units
-        if responses['WEIGHT_UNITS'] == 'pounds' and \
-                isinstance(md[1][barcode]['WEIGHT_KG'], float):
-            md[1][barcode]['WEIGHT_KG'] = \
-                md[1][barcode]['WEIGHT_KG']/2.20462
-        md[1][barcode]['WEIGHT_UNITS'] = 'kilograms'
+        return df
 
     def _human_create_bmi(self, df):
         """Create BMI, BMI_CORRECTED and BMI_CAT"""
