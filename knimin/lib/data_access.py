@@ -964,23 +964,12 @@ class KniminAccess(object):
             md['answer'] = revised
         return md
 
-    def _human_normalize_numeric():
-        raise obviously
-        # convert numeric fields
+    def _human_normalize_numeric(self, df):
+        """Convert fields that strings to numeric"""
         for field in ('HEIGHT_CM', 'WEIGHT_KG'):
-            md[1][barcode][field] = sub('[^0-9.]',
-                                        '', md[1][barcode][field])
-            try:
-                md[1][barcode][field] = float(md[1][barcode][field])
-            except ValueError:
-                md[1][barcode][field] = not_provided
-
-        if md[1][barcode]['WEIGHT_KG'] != not_provided:
-            md[1][barcode]['WEIGHT_KG'] = int(
-                md[1][barcode]['WEIGHT_KG'])
-        if md[1][barcode]['HEIGHT_CM'] != not_provided:
-            md[1][barcode]['HEIGHT_CM'] = int(
-                md[1][barcode]['HEIGHT_CM'])
+            df[field] = pd.to_numeric(df[field], errors='coerce')
+            df.loc[df[field].isnull(), field] = 'Not provided'
+        return df
 
     def _human_normalize_height(self, df):
         """Normalize height to CM"""

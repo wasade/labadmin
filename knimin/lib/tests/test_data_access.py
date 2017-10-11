@@ -220,11 +220,26 @@ class TestDataAccess(TestCase):
     def test_human_create_alcohol_consumption(self):
         self.fail()
     def test_human_create_collection_season(self):
-        self.fail()
-    def test_human_create_economic_census_regions(self):
-        self.fail()
+        df = pd.DataFrame([[2, 'bar'],
+                           ['thing', 'baz'],
+                           [7, 'biz']], columns=['COLLECTION_MONTH', 'other'])
+        exp = df.copy()
+        exp['COLLECTION_SEASON'] = ['Winter', 'Not provided', 'Summer']
+        obs = db._human_create_collection_season(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
     def test_human_normalize_numeric(self):
-        self.fail()
+        df = pd.DataFrame([[10, 20, 30],
+                           ['10', '20', '30'],
+                           ['foo', 5, 2],
+                           [None, np.nan, 'foo']],
+                          columns=['HEIGHT_CM', 'WEIGHT_KG', 'other'])
+        exp = df.copy()
+        exp['HEIGHT_CM'] = [10.0, 10.0, 'Not provided', 'Not provided']
+        exp['WEIGHT_KG'] = [20.0, 20.0, 5.0, 'Not provided']
+        obs = db._human_normalize_numeric(df)
+        pdt.assert_frame_equal(obs, exp)
+
     def test_human_normalize_height(self):
         df = pd.DataFrame([[10, 'inches'],
                            [20, 'centimeters'],
