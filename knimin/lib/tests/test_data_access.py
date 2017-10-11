@@ -207,6 +207,99 @@ class TestDataAccess(TestCase):
         db._smooth_survey_yesno(df)
         pdt.assert_frame_equal(df, exp)
 
+    def test_human_create_subset_antibiotic_history(self):
+        self.fail()
+    def test_human_create_subset_bmi(self):
+        self.fail()
+    def test_human_create_subset_diabetes(self):
+        self.fail()
+    def test_human_create_subset_ibd(self):
+        self.fail()
+    def test_human_create_ibd_diagnosis(self):
+        self.fail()
+    def test_human_create_alcohol_consumption(self):
+        self.fail()
+    def test_human_create_collection_season(self):
+        self.fail()
+    def test_human_create_economic_census_regions(self):
+        self.fail()
+    def test_human_normalize_numeric(self):
+        self.fail()
+    def test_human_normalize_height(self):
+        self.fail()
+    def test_human_normalize_weight(self):
+        self.fail()
+
+    def test_human_create_bmi(self):
+        df = pd.DataFrame([[50, 10],
+                           ['Not provided', 20],
+                           [15, 0],
+                           [15, 0.0],
+                           [0.1, 200]], columns=['HEIGHT_CM', 'WEIGHT_KG'])
+        exp = df.copy()
+        exp['BMI'] = [10 / (50.0 / 100)**2,
+                      'Not provided',
+                      'Not provided',
+                      'Not provided',
+                      200.0 / (0.1 / 100)**2]
+        exp['BMI_CORRECTED'] = ['40.00',
+                                'Not provided',
+                                'Not provided',
+                                'Not provided',
+                                'Not provided']
+        exp['BMI_CAT'] = ['Obese',
+                          'Not provided',
+                          'Not provided',
+                          'Not provided',
+                          'Not provided']
+
+        obs = db._human_create_bmi(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
+    def test_human_create_age_years(self):
+        df = pd.DataFrame([[1, 1970, 2017, 1, 1],
+                           ['Not provided', 'Not provided', 2017, 1, 1],
+                           [1, 1971, 2017, 1, 1]],
+                           columns=['BIRTH_MONTH', 'BIRTH_YEAR',
+                                    'COLLECTION_YEAR', 'COLLECTION_MONTH',
+                                    'COLLECTION_DAY'])
+        exp = df.copy()
+        exp['AGE_YEARS'] = ['47', 'Not provided', '46']
+        obs = db._human_create_age_years(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
+    def test_human_create_age_corrected(self):
+        df = pd.DataFrame([(5, 50, 20, 'foo'),
+                           (2, 200, 50, 'bar'),
+                           (2, 30, 10, 'daily'),
+                           (2, 30, 10, 'Never'),
+                           (25, 123, 123, 'blah')],
+                           columns=['AGE_YEARS',
+                                    'HEIGHT_CM',
+                                    'WEIGHT_KG',
+                                    'ALCOHOL_CONSUMPTION'])
+        exp = df.copy()
+        exp['AGE_CORRECTED'] = [5, 'Not provided', 'Not provided', 2, 25]
+        exp['AGE_CAT'] = ['child', 'Not provided', 'Not provided', 'baby',
+                          '20s']
+        obs = db._human_create_age_corrected(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
+    def test_human_create_sex(self):
+        df = pd.DataFrame([['male', 'fooA'],
+                           ['Male', 'fooB'],
+                           ['female', 'fooC'],
+                           ['Female', 'food'],
+                           ['mAlE', 'foox'],
+                           ['other', 'foox'],  # I dont think this is possible?
+                           ['unspecified', 'foox'],
+                           [None, 'asd']], columns=['GENDER', 'BLAH'])
+        exp = df.copy()
+        exp['SEX'] = ['male', 'male', 'female', 'female', 'male',
+                      'other', 'unspecified', 'Not provided']
+        obs = db._human_create_sex(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
     def test_human_create_subset_age(self):
         exp = pd.DataFrame([(1, 2, 3, 4), (5, 6, 7, 8)], columns=list('abcd'))
         obs = db._human_create_subset_age(exp.copy())

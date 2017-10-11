@@ -992,8 +992,16 @@ class KniminAccess(object):
         md[1][barcode]['HEIGHT_UNITS'] = 'centimeters'
 
 
-    def _human_normalize_weight():
-        raise obviously
+    def _human_normalize_weight(self, df):
+        """Normalize weight to KG"""
+        pounds = df['WEIGHT_UNITS'] == 'pounds'
+        weight = ~(df['WEIGHT_KG'].isin(['', np.nan, 'Not provided']))
+        to_normalize = pounds & weight
+
+        subset = df[to_normalize]
+        df.iloc[to_normalize, 'WEIGHT_KG'] = subset['WEIGHT_KG'] / 2.20462
+
+
         # Correct weight units
         if responses['WEIGHT_UNITS'] == 'pounds' and \
                 isinstance(md[1][barcode]['WEIGHT_KG'], float):
@@ -1001,60 +1009,64 @@ class KniminAccess(object):
                 md[1][barcode]['WEIGHT_KG']/2.20462
         md[1][barcode]['WEIGHT_UNITS'] = 'kilograms'
 
-    def _human_create_bmi():
-        raise obviously
-        if all([isinstance(md[1][barcode]['WEIGHT_KG'], float),
-                md[1][barcode]['WEIGHT_KG'] != 0.0,
-                isinstance(md[1][barcode]['HEIGHT_CM'], float),
-                md[1][barcode]['HEIGHT_CM'] != 0.0]):
-            md[1][barcode]['BMI'] = md[1][barcode]['WEIGHT_KG'] / \
-                (md[1][barcode]['HEIGHT_CM']/100)**2
-        else:
-            md[1][barcode]['BMI'] = not_provided
-            md[1][barcode]['HEIGHT_CM'] = not_provided
-            md[1][barcode]['WEIGHT_KG'] = not_provided
+    def _human_create_bmi(self, df):
+        """Create BMI, BMI_CORRECTED and BMI_CAT"""
+        def bmi(row):
+            weight = row['WEIGHT_KG']
+            height = row['HEIGHT_CM']
 
-        md[1][barcode]['BMI_CAT'] = categorize_bmi(
-            md[1][barcode]['BMI'], not_provided)
-        md[1][barcode]['BMI_CORRECTED'] = correct_bmi(
-            md[1][barcode]['BMI'], not_provided)
+            if height == 'Not provided' or weight == 'Not provided':
+                return 'Not provided'
+            elif height == 0 or weight == 0:
+                return 'Not provided'
+            else:
+                return float(weight) / (float(height) / 100)**2
 
-        md[1][barcode]['SUBSET_BMI'] = \
-            18.5 <= md[1][barcode]['BMI'] < 30 and \
-            not md[1][barcode]['BMI'] == not_provided
+        def corrected(row):
+            bmi = row['BMI']
+            return correct_bmi(bmi, 'Not provided')
 
-        # make sure conversions are done
-        if md[1][barcode]['BMI'] != not_provided:
-            md[1][barcode]['BMI'] = '%.2f' % md[1][barcode]['BMI']
+        def category(row):
+            bmi = row['BMI']
+            return categorize_bmi(bmi, 'Not provided')
 
-            ##### why a string? :/
+        df['BMI'] = df.apply(bmi, axis=1)
+        df['BMI_CORRECTED'] = df.apply(corrected, axis=1)
+        df['BMI_CAT'] = df.apply(category, axis=1)
 
-    def _human_create_age_years_and_subset():
-        raise obviously
-        # Get age in years (int) and remove birth month
-        if responses['BIRTH_MONTH'] != 'Unspecified' and \
-                responses['BIRTH_YEAR'] != 'Unspecified':
-            birthdate = datetime(
-                int(responses['BIRTH_YEAR']),
-                int(month_int_lookup[responses['BIRTH_MONTH']]), 1)
-            age_in_month = self._months_between_dates(
-                birthdate, datetime(bc_info['sample_date'].year,
-                                    bc_info['sample_date'].month,
-                                    bc_info['sample_date'].day))
-            md[1][barcode]['AGE_YEARS'] = int(age_in_month / 12.0)
-        else:
-            md[1][barcode]['AGE_YEARS'] = not_provided
-            md[1][barcode]['BIRTH_MONTH'] = not_provided
-            md[1][barcode]['BIRTH_YEAR'] = not_provided
+        return df
 
-    def _human_create_age_corrected():
+    def _human_create_age_years(self, df):
+        """Create AGE_YEARS"""
+        def age_years(row):
+            month = row['BIRTH_MONTH']
+            year = row['BIRTH_YEAR']
+
+            if month == 'Not provided' or year == 'Not provided':
+                return 'Not provided'
+            else:
+                col_year = row['COLLECTION_YEAR']
+                col_month = row['COLLECTION_MONTH']
+                col_day = row['COLLECTION_DAY']
+
+                birthdate = datetime(int(year), int(month), 1)
+                coldate = datetime(col_year, col_month, col_day)
+
+                age_in_months = self._months_between_dates(birthdate, coldate)
+
+                return str(int(age_in_months / 12.0))
+
+        df['AGE_YEARS'] = df.apply(age_years, axis=1)
+        return df
+
+    def _human_create_age_corrected(self, df):
         """Create AGE_CORRECTED and AGE_CAT"""
         def age_corrected(row):
             years = row['AGE_YEARS']
             height = row['HEIGHT_CM']
             weight = row['WEIGHT_KG']
             alc = row['ALCOHOL_CONSUMPTION']
-            return correct_age(years, height, weight, alc)
+            return correct_age(years, height, weight, alc, 'Not provided')
 
         def age_category(row):
             corrected = row['AGE_CORRECTED']
@@ -1065,7 +1077,7 @@ class KniminAccess(object):
 
         return df
 
-    def _human_create_sex():
+    def _human_create_sex(self, df):
         """Create the SEX category"""
         def sex(row):
             g = row['GENDER']
@@ -1098,7 +1110,7 @@ class KniminAccess(object):
         df['ALCOHOL_CONSUMPTION'] = df.apply(alcohol, axis=1)
         return df
 
-    def _human_create_collection_season():
+    def _human_create_collection_season(self, df):
         def season(row):
             return season_lookup.get(row['COLLECTION_MONTH'], 'Not provided')
 
@@ -1124,7 +1136,6 @@ class KniminAccess(object):
 
     def _human_create_subset_age(self, df):
         """Create the inferred SUBSET_AGE column"""
-        criteria = {'AGE_YEARS': (19, 70)}
         if 'AGE_YEARS' not in df.columns:
             return df
 
@@ -1133,6 +1144,19 @@ class KniminAccess(object):
             return not np.isnan(val) and (19 < val < 70)
 
         df['SUBSET_AGE'] = df.apply(test, axis=1)
+        return df
+
+    def _human_create_subset_bmi(self, df):
+        """Create the inferred SUBSET_BMI column"""
+        criteria = {'BMI_CORRECTED': (18.5, 30)}
+        if 'BMI_CORRECTED' not in df.columns:
+            return df
+
+        def test(row):
+            val = row['BMI_CORRECTED']
+            return not np.isnan(val) and (18.5 < val < 30)
+
+        df['SUBSET_BMI'] = df.apply(test, axis=1)
         return df
 
     def _human_create_subset_diabetes(self, df):
@@ -1211,15 +1235,22 @@ class KniminAccess(object):
                                       'barcode'],
                                columns=['question'], aggfunc=lambda x: x.str.cat())
 
-        creations = [self._human_create_subset_antibiotic_history,
+        creations = [self._human_create_bmi,
+                     self._human_create_ibd_diagnosis,
+                     self._human_create_economic_census_regions,
+                     self._human_create_alcohol_consumption,
+                     self._human_create_collection_season,
+                     self._human_create_sex,
+                     self._human_create_age_years,
+                     self._human_create_age_corrected,
+
+                     self._human_create_subset_antibiotic_history,
                      self._human_create_subset_ibd,
                      self._human_create_subset_diabetes,
                      self._human_create_subset_age,
+                     self._human_create_subset_bmi,
+                     self._human_create_subset_healthy]
 
-                     # note: depends on prior subset creatios
-                     self._human_create_subset_healthy,
-
-                     self._human_create_economic_census_regions]
         for f in creations:
             pivot = f(pivot)
 
