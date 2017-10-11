@@ -1090,7 +1090,7 @@ class KniminAccess(object):
     def _human_create_alcohol_consumption(self, df):
         """Create inferred ALCOHOL_CONSUMPTION field"""
         def alcohol(row):
-            return categorize_etoh(row['ALCOHOL_FREQUENCY'], not_provided)
+            return categorize_etoh(row['ALCOHOL_FREQUENCY'], 'Not provided')
 
         df['ALCOHOL_CONSUMPTION'] = df.apply(alcohol, axis=1)
         return df

@@ -216,9 +216,27 @@ class TestDataAccess(TestCase):
     def test_human_create_subset_ibd(self):
         self.fail()
     def test_human_create_ibd_diagnosis(self):
-        self.fail()
+        df = pd.DataFrame([["Ileal Crohn's Disease", 'foo'],
+                           ["Colonic Crohn's Disease", "bar"],
+                           ["something", "baz"],
+                           ["Ulcerative colitis", "asd"]],
+                          columns=['IBD_DIAGNOSIS_REFINED', 'thing'])
+        exp = df.copy()
+        exp['IBD_DIAGNOSIS'] = ["Crohn's disease", "Crohn's disease",
+                                'Not provided', "Ulcerative colitis"]
+        obs = db._human_create_ibd_diagnosis(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
     def test_human_create_alcohol_consumption(self):
-        self.fail()
+        # the underlying categorization is pretty loose.
+        df = pd.DataFrame([['Never', 'blah'],
+                           ['Daily', 'biz']],
+                          columns=['ALCOHOL_FREQUENCY', 'other'])
+        exp = df.copy()
+        exp['ALCOHOL_CONSUMPTION'] = ['No', 'Yes']
+        obs = db._human_create_alcohol_consumption(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
     def test_human_create_collection_season(self):
         df = pd.DataFrame([[2, 'bar'],
                            ['thing', 'baz'],
