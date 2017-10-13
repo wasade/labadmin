@@ -1220,91 +1220,31 @@ class KniminAccess(object):
                                       'barcode'],
                                columns=['question'], aggfunc=lambda x: x.str.cat())
 
-        creations = [self._human_create_bmi,
-                     self._human_create_ibd_diagnosis,
-                     self._human_create_economic_census_regions,
-                     self._human_create_alcohol_consumption,
-                     self._human_create_collection_season,
-                     self._human_create_sex,
-                     self._human_create_age_years,
-                     self._human_create_age_corrected,
+        funcs = [self._human_normalize_numeric,
+                 self._human_normalize_height,
+                 self._human_normalize_weight,
+		 self._human_create_bmi,
+                 self._human_create_ibd_diagnosis,
+                 self._human_create_economic_census_regions,
+                 self._human_create_alcohol_consumption,
+                 self._human_create_collection_season,
+                 self._human_create_sex,
+                 self._human_create_age_years,
+                 self._human_create_age_corrected,
+                 self._human_create_subset_antibiotic_history,
+                 self._human_create_subset_ibd,
+                 self._human_create_subset_diabetes,
+                 self._human_create_subset_age,
+                 self._human_create_subset_bmi,
+                 self._human_create_subset_healthy]
 
-                     self._human_create_subset_antibiotic_history,
-                     self._human_create_subset_ibd,
-                     self._human_create_subset_diabetes,
-                     self._human_create_subset_age,
-                     self._human_create_subset_bmi,
-                     self._human_create_subset_healthy]
-
-        for f in creations:
+        for f in funcs:
             pivot = f(pivot)
 
         melted = pd.melt(pivot.reset_index(), value_name='answer',
                          id_vars=['survey', 'participant_survey_id',
                                   'barcode'])
         return pd.concat([md, melted])
-
-        ### set description by sample type
-        # Human survey (id 1)
-
-        ###HUMAN_CATEGORIES_TO_FUNCTION = {
-        ###    ('HEIGHT_CM', ): _human_normalize_numeric,
-        ###    ('WEIGHT_KG', ): _human_normalize_numeric,
-        ###    ('GENDER', ): _human_create_sex,
-        ###    ('HEIGHT_UNITS', 'HEIGHT_CM'): _human_normalize_height,
-        ###    ('WEIGHT_UNITS', 'WEIGHT_KG'): _human_normalize_weight,
-        ###    ('HEIGHT_CM', 'WEIGHT_KG'): _human_create_bmi,
-        ###    ('BIRTH_MONTH', 'BIRTH_YEAR', 'sample_date'): _human_create_age_years_and_subset,
-        ###    ('ZIP_CODE', 'country'): _human_create_geocode,
-        ###    ('sample_time', 'sample_date'): _human_create_collection_timestamp,
-        ###    ('site_sampled', ): _human_set_site_specific_metadata,
-        ###    ('IBD_DIAGNOSIS_REFINED', ): _human_create_ibd_diagnosis,
-        ###    ('ALCOHOL_FREQUENCY', ): _human_create_alcohol_consumption,
-        ###    ('sample_date', ): _human_create_collection_season,
-        ###    ('STATE', ): _human_create_economic_census_regions,
-        ###    ('DIABETES', ): _human_create_subset_diabetes,
-        ###    ('IBD', ): _human_create_subset_ibd,
-        ###    ('ANTIBIOTIC_HISTORY', ): _human_create_subset_antibiotic_history,
-        ###    ('SUBSET_AGE', 'SUBSET_DIABETES', 'SUBSET_IBD', 'SUBSET_ANTIBIOTIC_HISTORY', 'SUBSET_BMI'): _human_create_subset_healthy,
-        ###    ('AGE_YEARS', 'HEIGHT_CM', 'WEIGHT_KG', 'ALCOHOL_CONSUMPTION'): _human_create_age_corrected_and_category,
-
-        ###for barcode, responses in md[1].items():
-        ###    bc_info = barcode_info[barcode[:9]]
-        ###    try:
-        ###        participant_name = dupes_lookup.get(
-        ###            md[1][barcode]['SURVEY_ID'],
-        ###            bc_info['participant_name']).lower()
-
-        ###        md[1][barcode]['HOST_SUBJECT_ID'] = sha512(
-        ###            bc_info['ag_login_id'] + participant_name).hexdigest()
-        ###        md[1][barcode]['PUBLIC'] = 'Yes'
-
-
-        ###        # Get rid of columns not wanted for pulldown
-        ###        if not full:
-        ###            for col in ebi_remove:
-        ###                try:
-        ###                    del md[1][barcode][col]
-        ###                except KeyError:
-        ###                    # Column doesn't exist already for survey
-        ###                    # (retired), so no removal needed
-        ###                    pass
-
-        ###        # Add the external surveys
-        ###        if unknown_external:
-        ###            md[1][barcode].update(external.get(md[1][barcode][
-        ###                'SURVEY_ID'], unknown_external))
-
-        ###        self._sync_with_data_dictionary(md[1][barcode], not_provided,
-        ###                                        not_applicable)
-        ###    except Exception as e:
-        ###        # Add barcode to error and remove from metadata info
-        ###        if isinstance(e, SSLError):
-        ###            errors[barcode] = repr(e)
-        ###        else:
-        ###            errors[barcode] = str(e.message.encode('utf-8'))
-        ###        del md[1][barcode]
-
 
     def _integrate_barcode_information(self, md, barcode_info, full=False):
         """Integrate barcoe information (e.g., sample time, type, etc)"""
@@ -1373,6 +1313,19 @@ class KniminAccess(object):
                                                'answer'])
         return pd.concat([md, to_add], ignore_index=True)
 
+    def _smooth_nulls(self, df):
+        """Standardize nulls to Not Provided"""
+        def clean_not_provided(row):
+            a = row['answer']
+            if isinstance(a, (str, unicode)) and a.lower() == 'unspecified':
+                a = 'Not provided'
+            elif pd.isnull(a):
+                a = 'Not provided'
+            return a
+
+	df['answer'] = df.apply(clean_not_provided, axis=1)
+        return df
+
     def format_survey_data(self, md, full=False):  # noqa
         """Modifies barcode metadata to include all columns and correct units
 
@@ -1405,28 +1358,13 @@ class KniminAccess(object):
         all_barcodes = set(md['barcode'].unique())
         barcode_info = self.get_ag_barcode_details(all_barcodes)
 
-        #dupes_sql = """SELECT duplicate_survey_id, participant_name
-        #               FROM ag.duplicate_consents dc
-        #               JOIN ag.ag_login_surveys als USING (ag_login_id)
-        #               WHERE  dc.main_survey_id = als.survey_id"""
-        #dupes_lookup = dict(self._con.execute_fetchall(dupes_sql))
-
         md = self._integrate_barcode_information(md, barcode_info, full)
         md = self._smooth_survey_yesno(md)
         md = self._smooth_survey_pets(md)
         md = self._smooth_survey_human(md)
+        md = self._smooth_nulls(md)
 
-        ### need general geocoding for both pets / human
-                #md[2][barcode] = self._geocode(md[2][barcode], zipcode, country,
-                 #                              zip_lookup, country_lookup)
-
-        for survey in md:
-            for barcode, responses in md[survey].items():
-                for c, v in md[survey][barcode].items():
-                    if isinstance(v, (str, unicode)) and v.lower() == 'unspecified':
-                        md[survey][barcode][c] = not_provided
-
-        return md, errors
+        return md
 
     def _sync_with_data_dictionary(self, barcode_metadata, not_provided,
                                    not_applicable):

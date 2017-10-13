@@ -207,6 +207,17 @@ class TestDataAccess(TestCase):
         db._smooth_survey_yesno(df)
         pdt.assert_frame_equal(df, exp)
 
+    def test_smooth_nulls(self):
+        df = pd.DataFrame([['unspecified', 'foo'],
+                           [u'unspECified', 'bar'],
+                           [np.nan, 'baz'],
+                           ['stuff', 'qasd']], columns=['answer', 'other'])
+        exp = df.copy()
+        exp['answer'] = ['Not provided', 'Not provided', 'Not provided',
+                         'stuff']
+        obs = db._smooth_nulls(df)
+        pdt.assert_frame_equal(obs, exp)
+
     def test_human_create_subset_bmi(self):
         df = pd.DataFrame([[19, 'foo'],
                            [18, 'bar'],
