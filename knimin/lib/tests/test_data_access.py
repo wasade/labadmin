@@ -79,10 +79,20 @@ class TestDataAccess(TestCase):
                                     'question',
                                     'answer'])
         obs = db._smooth_survey_pets(df)
-        self.assertEqual(len(obs[obs.survey == 1]), 2)
+
+        # test was originally written on melted data, so easier to just
+        # melt than operate on pivot
+        obs = pd.melt(obs.reset_index(), value_name='answer',
+                      id_vars=['survey', 'participant_survey_id',
+                               'barcode'])
+        # remove nulls from the melt that happen because some questions are
+        # in the test (e.g. "foo") are not common across surveys
+        obs = obs[~obs['answer'].isnull()]
+
+        self.assertEqual(len(obs[obs.survey == 1]), 0)
         self.assertEqual(len(obs[obs.barcode == '123459']), 16)
         self.assertEqual(len(obs[obs.barcode == '123456789']), 33)
-        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 17)
+        self.assertEqual(len(obs[obs.participant_survey_id == 'abcd']), 16)
         env_feature = obs[obs.question == 'ENV_FEATURE']
         self.assertEqual(env_feature.answer.value_counts().to_dict(),
                         {'animal-associated habitat': 3})

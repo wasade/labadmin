@@ -903,8 +903,17 @@ class KniminAccess(object):
         """Add static entries for any unique pet survey"""
         sid = 2
         pets = md[md.survey == sid]
+
+        if len(pets) == 0:
+            return pd.DataFrame()
+
         new_rows = self._smooth_survey_host_invariant(pets, is_human=False)
-        return pd.concat([md, new_rows])
+
+        pivot = pd.pivot_table(pd.concat([new_rows, pets]), values='answer',
+                               index=['survey', 'participant_survey_id',
+                                      'barcode'],
+                               columns=['question'], aggfunc=lambda x: x.str.cat())
+        return pivot
 
     def _smooth_survey_host_invariant(self, md, is_human):
         if is_human:
@@ -959,8 +968,12 @@ class KniminAccess(object):
                     'true': 'true',
                     'false': 'false',
                     'no': 'false'}
-            revised = [remap.get(a.lower(), a)
-                       for a in md['answer']]
+            revised = []
+            for a in md['answer']:
+                if isinstance(a, (str, unicode)):
+                    revised.append(remap.get(a.lower(), a))
+                else:
+                    revised.append(a)
             md['answer'] = revised
         return md
 
@@ -1204,12 +1217,12 @@ class KniminAccess(object):
         df[result] = df.apply(test, axis=1)
         return df
 
-    def _smooth_survey_human(self, md):
+    def _smooth_and_pivot_survey_human(self, md):
         """Add constant details, and normalize where necessary"""
         sid = 1
         humans = md[md.survey == sid]
         if len(humans) == 0:
-            return md
+            return pd.DataFrame()
 
         with_invariant = self._smooth_survey_host_invariant(humans, is_human=True)
         humans = pd.concat([humans, with_invariant])
@@ -1241,10 +1254,11 @@ class KniminAccess(object):
         for f in funcs:
             pivot = f(pivot)
 
-        melted = pd.melt(pivot.reset_index(), value_name='answer',
-                         id_vars=['survey', 'participant_survey_id',
-                                  'barcode'])
-        return pd.concat([md, melted])
+        # A note on how to melt because it's a bit weird
+        #melted = pd.melt(pivot.reset_index(), value_name='answer',
+        #                 id_vars=['survey', 'participant_survey_id',
+        #                          'barcode'])
+        return pivot
 
     def _integrate_barcode_information(self, md, barcode_info, full=False):
         """Integrate barcoe information (e.g., sample time, type, etc)"""
@@ -1345,10 +1359,8 @@ class KniminAccess(object):
 
         Returns
         -------
-        dict of dict of dict
-            the formatted metadata
-        list of tuple of str
-            The barcode and error message if something failed
+        dict of pd.DataFrame
+            the formatted metadata, keyed by the survey ID
         """
         not_provided = 'Not provided'
         not_applicable = 'Not applicable'
@@ -1360,11 +1372,12 @@ class KniminAccess(object):
 
         md = self._integrate_barcode_information(md, barcode_info, full)
         md = self._smooth_survey_yesno(md)
-        md = self._smooth_survey_pets(md)
-        md = self._smooth_survey_human(md)
         md = self._smooth_nulls(md)
 
-        return md
+        pets = self._smooth_and_pivot_survey_pets(md)
+        humans = self._smooth_and_pivot_survey_human(md)
+
+        return {1: humans, 2: pets}
 
     def _sync_with_data_dictionary(self, barcode_metadata, not_provided,
                                    not_applicable):
