@@ -207,14 +207,17 @@ class TestDataAccess(TestCase):
         db._smooth_survey_yesno(df)
         pdt.assert_frame_equal(df, exp)
 
-    def test_human_create_subset_antibiotic_history(self):
-        self.fail()
     def test_human_create_subset_bmi(self):
-        self.fail()
-    def test_human_create_subset_diabetes(self):
-        self.fail()
-    def test_human_create_subset_ibd(self):
-        self.fail()
+        df = pd.DataFrame([[19, 'foo'],
+                           [18, 'bar'],
+                           [31, 'baz'],
+                           [np.nan, 'asd']], columns=['BMI_CORRECTED',
+                                                      'other'])
+        exp = df.copy()
+        exp['SUBSET_BMI'] = [True, False, False, False]
+        obs = db._human_create_subset_bmi(df)
+        pdt.assert_frame_equal(obs, exp, check_column_type=False)
+
     def test_human_create_ibd_diagnosis(self):
         df = pd.DataFrame([["Ileal Crohn's Disease", 'foo'],
                            ["Colonic Crohn's Disease", "bar"],
