@@ -11,6 +11,8 @@ from requests.exceptions import SSLError
 import json
 import re
 
+from sync_vioscreen import users
+
 from bcrypt import hashpw, gensalt
 from future.utils import viewitems
 
@@ -453,6 +455,33 @@ class KniminAccess(object):
                  WHERE barcode in %s"""
         res = self._con.execute_fetchall(sql, [tuple(b[:9] for b in barcodes)])
         return {row[0]: dict(row) for row in res}
+
+    def get_survey_ids_no_vio(self):
+        """Retrieve survey ids that do not have vioscreen data
+
+        Returns
+        -------
+        set of str
+            The set of survey ids in ag that do not have vioscreen data
+        """
+        sql = """SELECT survey_id FROM ag.ag_login_surveys
+                 WHERE vioscreen_status = NULL"""
+
+        res = self._con.execute_fetchall(sql)A
+        return {i[0] for i in ids}
+
+    def get_vio_survey_ids_not_in_ag(self):
+        """Retrieve survey ids that have vioscreen data but
+           but are not in the ag database
+
+        Returns
+        -------
+        set of str
+            The set of survey_ids in vioscreen that aren't in ag
+        """
+        user_ids = {x['username'] for x in users['users']}
+        ag_survey_ids = get_survey_ids_no_vio()
+        return set(ag_survey_ids) & set(user_ids)
 
     def get_surveys(self, barcodes):  # noqa
         """Retrieve surveys for specific barcodes
