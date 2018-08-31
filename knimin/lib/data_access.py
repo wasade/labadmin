@@ -454,26 +454,6 @@ class KniminAccess(object):
         res = self._con.execute_fetchall(sql, [tuple(b[:9] for b in barcodes)])
         return {row[0]: dict(row) for row in res}
 
-    def get_vio_survey_ids_not_in_ag(self, vio_ids):
-        """Retrieve survey ids that have vioscreen data but
-           have not have their data transferred to ag
-
-        Parameters
-        ----------
-        vio_ids : set of ids present in vioscreen
-
-        Returns
-        -------
-        set of str
-            The set of survey_ids in vioscreen that aren't in ag
-        """
-        sql = """SELECT survey_id FROM ag.ag_login_surveys
-                 WHERE vioscreen_status = NULL"""
-
-        ag_survey_ids = self._con.execute_fetchall(sql)
-        ag_survey_ids = {i[0] for i in ag_survey_ids}
-        return vio_ids - set(ag_survey_ids)
-
     def get_surveys(self, barcodes):  # noqa
         """Retrieve surveys for specific barcodes
 
@@ -1761,7 +1741,6 @@ class KniminAccess(object):
                               separator="\t", survey_id_col="survey_id",
                               trim=None):
         """Stores third party survey answers in the database
-
         Parameters
         ----------
         in_file : open file or StringIO
@@ -1778,12 +1757,10 @@ class KniminAccess(object):
         trim : str
             Regex to trim the survey id column, using re.sub(trim, '', sid)
             Default None
-
         Returns
         -------
         count : int
             Number of rows inserted
-
         Raises
         ------
         ValueError

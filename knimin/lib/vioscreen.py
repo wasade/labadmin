@@ -13,21 +13,22 @@ class VioscreenHandler(object):
         self._session = requests.Session()
         # setup our HTTP header data
         self._headers = {'Accept': 'application/json',
-                         'Authorization': 'Bearer %s' % self._get_token()}
-        self._users = self.get_users()
+                         'Authorization': 'Bearer %s' % self.get_token()}
         self.sql_handler = SQLHandler(config)
+        self._users = self.get_users()
+        self._survey_ids = self.get_init_surveys()
 
     # get an API token
-    def _get_token(self):
-        return self._post('https://api.viocare.com/KLUCB/auth/login',
+    def get_token(self):
+        return self.post('https://api.viocare.com/KLUCB/auth/login',
                      data={"username": "APIAdminKLUCB", 
                            "password": "APIAdminKLUCB"})['token']
     
     def get_users(self):
-        return self._get('https://api.viocare.com/KLUCB/users',
+        return self.get('https://api.viocare.com/KLUCB/users',
                          headers=self._headers)
 
-    def _get(self, url, retries=5, **kwargs):
+    def get(self, url, retries=5, **kwargs):
         for i in range(retries):
             req = self._session.get(url, **kwargs)
             if req.status_code != 200:  # HTTP status code, 200 is all good
@@ -36,7 +37,7 @@ class VioscreenHandler(object):
                 # if we did not get a HTTP status code 200, than guess that the
                 # API token is no longer valid so get a new one and retry
                 if 'Code' in data and data['Code'] == 1016:
-                    self._headers['token'] = self._get_token()
+                    self._headers['token'] = self.get_token()
                 else:
                     print(self._session.get, url, kwargs)
                     raise ValueError("Unable to make this query work")
@@ -44,7 +45,7 @@ class VioscreenHandler(object):
                 return req.json()
         raise ValueError("Unable to make this query work")
 
-    def _post(self, url, retries=5, **kwargs):
+    def post(self, url, retries=5, **kwargs):
         for i in range(retries):
             req = self._session.post(url, **kwargs)
             if req.status_code != 200:  # HTTP status code, 200 is all good
@@ -53,7 +54,7 @@ class VioscreenHandler(object):
                 # if we did not get a HTTP status code 200, than guess that the
                 # API token is no longer valid so get a new one and retry
                 if 'Code' in data and data['Code'] == 1016:
-                    self._headers['token'] = self._get_token()
+                    self._headers['token'] = self.get_token()
                 else:
                     print(self._session.post, url, kwargs)
                     raise ValueError("Unable to make this query work")
@@ -71,11 +72,11 @@ class VioscreenHandler(object):
         return dat
 
     def get_session_data(self, session_id, endpoint):
-        return self._get('https://api.viocare.com/KLUCB/sessions/%s/%s' %
+        return self.get('https://api.viocare.com/KLUCB/sessions/%s/%s' %
                          (session_id, endpoint),
                          headers=self._headers)
 
-    def get_vioscreen(self, limit=None):
+    def sync_vioscreen(self, limit=None, test=False):
         # assign local users var to be derivative of users member variable
         try:
             user_ids = {x['username'] for x in self._users['users'][:limit]}
@@ -94,24 +95,15 @@ class VioscreenHandler(object):
                 users_to_sync.append(i)
         users['users'] = users_to_sync
 
-        #tidy_data = []
-        have_results_for = set()
-
-        #if os.path.exists('vioscreen_tmp_out.txt'):
-        #    tidy_data = [json.loads(l) for l in open('vioscreen_tmp_out.txt')]
-        #    have_results_for = {d['survey_id'] for d in tidy_data}
-        #else:
-        #    print('Creating vioscreen_tmp_out.txt')
-
-        #tmp_out = open('vioscreen_tmp_out.txt', 'a')
- 
         for idx, user in enumerate(users['users']):
+            # prints time for every ten surveys finished
+            if idx % 10 == 0:
+                print(datetime.now(), idx)
+
             username = user['username']
-            if username in have_results_for:
-                continue
 
             try:
-                session_data = self._get('https://api.viocare.com/KLUCB/users/%s/sessions'
+                session_data = self.get('https://api.viocare.com/KLUCB/users/%s/sessions'
                                          % username, headers=self._headers)
             except ValueError:
                 # I don't understand this, but "JDebelius" does not exist.
@@ -120,12 +112,24 @@ class VioscreenHandler(object):
 
             for session_detail in session_data['sessions']:
                 session_id = session_detail['sessionId']
-                detail = self._get('https://api.viocare.com/KLUCB/sessions/%s/detail'
+                detail = self.get('https://api.viocare.com/KLUCB/sessions/%s/detail'
                                    % session_id, headers=self._headers)
+
+
+                if test is True:
+                    username = '853df6a15d131b2c'
+
+                # Adds new survey information to database
+                if username not in self._survey_ids:
+                    self._survey_ids[username] = detail['status']
+                    self.insert_survey(username, detail['status'])
+                # Updates status of vioscreen survey if it has changed
+                elif self._survey_ids[username] != detail['status']:
+                    self._survey_ids[username] = detail['status']
+                    self.update_status(username, detail['status'])
 
                 # only finished surveys will have their data pulled
                 if detail['status'] != 'Finished':
-                    print(username, 'NOT FINISHED')
                     continue
 
                 # only get the first finished one, not sure how to handle a situation if someone has multiple right now
@@ -139,7 +143,6 @@ class VioscreenHandler(object):
                 except ValueError:
                     # sometimes there is a status Finished w/o data...
                     continue
-
                 foodcomponents = self.tidyfy(username, foodcomponents)
                 percentenergy = self.tidyfy(username, percentenergy)
                 mpeds = self.tidyfy(username, mpeds)
@@ -154,65 +157,81 @@ class VioscreenHandler(object):
                 self.insert_foodconsumption(foodconsumption)
                 self.insert_dietaryscore(dietaryscore)
 
-                #tidy_data.extend(a)
-                #tidy_data.extend(b)
-                #tidy_data.extend(c)
-                #tidy_data.extend(d)
-                #tidy_data.extend(e)
-                #tidy_data.extend(f)
+                if test is True:
+                    return
 
-                #for item in a + b + c + d + e + f:
-                #    tmp_out.write(json.dumps(item))
-                #    tmp_out.write('\n')
-
-                have_results_for.add(username)
                 break
 
-            # prints time for every ten surveys finished
-            if idx % 10 == 0:
-                print(datetime.now(), idx)
-
-        #df = pd.DataFrame(tidy_data)
-        #df.to_csv('vioscreen_dump.tsv', sep='\t', index=False)
-
-        #in_file = open('vioscreen_dump.tsv', 'rw+')
-        #db.store_external_survey(in_file, 'Vioscreen')
-
     # DB access functions
-#    def update_vio_status(self, survey_id, status):
-#        sql = """SELECT survey_id from ag.vioscreen_surveys"""
-#        survey_ids = 
-#
-#    def get_vio_survey_ids_in_ag(self):
-#        sql = """SELECT survey_id FROM ag.vioscreen_surveys"""
-#        return self.sql_handler.execute_fetchall(sql)
-#
-    def get_vio_survey_ids_not_in_ag(self, vio_ids):
-        """Retrieve survey ids that have vioscreen data but
-           have not have their data transferred to ag
+    def get_init_surveys(self):
+        """Retrieve initial set of vioscreen surveys before sync
+
+        Returns
+        -------
+        dict
+           Initial set of survey IDs and their corresponding statuses 
+        """
+        sql = """SELECT survey_id, status from ag.vioscreen_surveys"""
+        data = self.sql_handler.execute_fetchall(sql)
+        survey_ids = {}
+        for r in data:
+            survey_ids[r[0]] = r[1]
+        return survey_ids
+
+    def update_status(self, survey_id, status):
+        """Updates vioscreen status of AG database to correspond to status
+           pulled from vioscreen
 
         Parameters
         ----------
-        vio_ids : set of ids present in vioscreen
+        survey_id: str
+            Survey ID being updated in database
+        status: str
+            Status that the survey ID status is being updated to
+        """
+        if status == 'Finished':
+            pulldown_date = datetime.now()
+        else:
+            pulldown_date = None
+        sql = """UPDATE ag.vioscreen_surveys SET status=%s,
+                 pulldown_date=%s WHERE survey_id=%s"""
+        self.sql_handler.execute(sql, [status, pulldown_date, survey_id])
+
+    def insert_survey(self, survey_id, status):
+        pulldown_date = datetime.now()
+        sql = """INSERT INTO ag.vioscreen_surveys (status, survey_id,
+                 pulldown_date) VALUES (%s, %s, %s)"""
+        self.sql_handler.execute(sql, [status, survey_id, pulldown_date])
+
+    def get_vio_survey_ids_not_in_ag(self, vio_ids):
+        """Retrieve survey ids that have vioscreen data but
+           have not have their data transferred to AG
+
+        Parameters
+        ----------
+        vio_ids: set of str
+            The set of IDs present in vioscreen
 
         Returns
         -------
         set of str
-            The set of survey_ids in vioscreen that aren't in ag
+            The set of survey IDs in vioscreen that aren't in AG
         """
-        sql = """SELECT survey_id FROM ag.external_survey_answers"""
+        sql = """SELECT survey_id FROM ag.vioscreen_surveys
+                 WHERE status = 'Finished'"""
 
         ag_survey_ids = self.sql_handler.execute_fetchall(sql)
         ag_survey_ids = {i[0] for i in ag_survey_ids}
         return vio_ids - set(ag_survey_ids)
 
-    def _call_sql_handler(self, sql, session_data):
+    def call_sql_handler(self, sql, session_data):
         """Formats session_data to insert into a particular table
 
         Parameters
         ----------
-        sql : SQL query specific to particular session insertion
-        session_data : Data pulled from Vioscreen
+        sql: str
+            SQL query specific to particular session insertion
+            session_data : Data pulled from Vioscreen
 
         Return
         ------
@@ -230,7 +249,8 @@ class VioscreenHandler(object):
 
         Parameters
         ----------
-        foodcomponents : foodcomponents session data
+        foodcomponents: list of different types
+            foodcomponents session data
 
         Return
         ------
@@ -240,14 +260,15 @@ class VioscreenHandler(object):
         sql = """INSERT INTO ag.vioscreen_foodcomponents (code, description,
                  valueType, amount, units, survey_id) VALUES (%s,
                  %s, %s, %s, %s, %s)"""
-        return self._call_sql_handler(sql, foodcomponents)
+        return self.call_sql_handler(sql, foodcomponents)
 
     def insert_percentenergy(self, percentenergy):
         """Inserts percentenergy data into AG database
 
         Parameters
         ----------
-        percentenergy : percentenergy session data
+        percentenergy: list of different types
+            percentenergy session data
 
         Return
         ------
@@ -258,14 +279,15 @@ class VioscreenHandler(object):
                  precision, foodComponentType, amount, foodDataDefinition,
                  units, survey_id, shortDescription) VALUES (%s, %s, %s, %s,
                  %s, %s, %s, %s, %s)"""
-        return self._call_sql_handler(sql, percentenergy)
+        return self.call_sql_handler(sql, percentenergy)
 
     def insert_mpeds(self, mpeds):
         """Inserts mpeds data into AG database
 
         Parameters
         ----------
-        mpeds : mpeds session data
+        mpeds: list of different types
+            mpeds session data
 
         Return
         ------
@@ -274,14 +296,15 @@ class VioscreenHandler(object):
         """
         sql = """INSERT INTO ag.vioscreen_mpeds (code, description, valueType,
                  amount, units, survey_id) VALUES (%s, %s, %s, %s, %s, %s)"""
-        return self._call_sql_handler(sql, mpeds)
+        return self.call_sql_handler(sql, mpeds)
 
     def insert_eatingpatterns(self, eatingpatterns):
         """Inserts eatingpatterns data into AG database
 
         Parameters
         ----------
-        eatingpatterns : eatingpatterns session data
+        eatingpatterns: list of different types
+            eatingpatterns session data
 
         Return
         ------
@@ -291,14 +314,15 @@ class VioscreenHandler(object):
         sql = """INSERT INTO ag.vioscreen_eatingpatterns (code,
                  description, valueType, amount, units, survey_id)
                  VALUES (%s, %s, %s, %s, %s, %s)"""
-        return self._call_sql_handler(sql, eatingpatterns)
+        return self.call_sql_handler(sql, eatingpatterns)
 
     def insert_foodconsumption(self, foodconsumption):
         """Inserts foodconsumption data into AG database
 
         Parameters
         ----------
-        foodconsumption : foodconsumption session data
+        foodconsumption: list of different types
+            foodconsumption session data
 
         Return
         ------
@@ -313,14 +337,15 @@ class VioscreenHandler(object):
         # convert large data dict to json for data storage
         for row in foodconsumption:
             row['data'] = json.dumps(row['data'])
-        return self._call_sql_handler(sql, foodconsumption) 
+        return self.call_sql_handler(sql, foodconsumption) 
 
     def insert_dietaryscore(self, dietaryscore):
         """Inserts dietaryscore data into AG database
 
         Parameters
         ----------
-        dietaryscore : dietaryscore session data
+        dietaryscore: list of different types
+            dietaryscore session data
 
         Return
         ------
@@ -330,4 +355,46 @@ class VioscreenHandler(object):
         sql = """INSERT INTO ag.vioscreen_dietaryscore (name, lowerLImit,
                  score, survey_id, type, upperLimit) VALUES (%s, %s,
                  %s, %s, %s, %s)"""
-        return self._call_sql_handler(sql, dietaryscore)
+        return self.call_sql_handler(sql, dietaryscore)
+
+    def pull_vioscreen_data(self, barcode, foodcomponents=True,
+            percentenergy=True, mpeds=True, foodconsumption=True,
+            dietaryscore=True, eatingpatterns=True):
+        # Gets corresponding survey ID of barcode and also verifies
+        # that the barcode has data to be pulled
+        sql = """SELECT survey_id FROM ag.source_barcodes_surveys
+                 WHERE barcode = %s"""
+        sid = self.sql_handler.execute_fetchone(sql,[barcode])
+        if not sid:
+            raise ValueError("Barcode %s is not present in the database" % barcode)
+        else:
+            sid = sid[0]
+
+        sql = """SELECT * FROM ag.vioscreen_sessions"""
+        sessions = self.sql_handler.execute_fetchall(sql)
+        sessions = [x[0] for x in sessions]
+
+        # Filters out undesired session data if requested
+        # Else, all sessions are the default
+        tables = []
+        for i in sessions:
+            if type(eval(i)) is not bool:
+                raise TypeError("%s parameter must be type bool" % i)
+            elif not eval(i):
+                sessions.remove(i)
+            sql = """SELECT * FROM ag.vioscreen_{0} WHERE survey_id = %s""".format(i)
+            data = self.sql_handler.execute_fetchall(sql, [sid])
+            data = [dict(r) for r in data]
+            df = pd.DataFrame(data)
+            tables.append(df)
+        df = pd.concat(tables, keys=sessions, sort=False)
+        df.to_csv('%s_vioscreen.tsv' % barcode, sep='\t', index=False)
+        return df
+
+    # Testing function
+    def flush_vioscreen_db(self):
+        tables = ['foodcomponents', 'percentenergy', 'mpeds', 'eatingpatterns',
+                  'foodconsumption', 'dietaryscore', 'surveys']
+        for i in tables:
+            sql = """DELETE FROM ag.vioscreen_{0}""".format(i)
+            self.sql_handler.execute(sql)
