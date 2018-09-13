@@ -2,21 +2,25 @@ from unittest import TestCase, main
 from datetime import datetime
 from os.path import join, dirname, realpath
 from six import StringIO
+import json
 
 from knimin.lib.vioscreen import VioscreenHandler
 
 
 class TestVioscreenHandler(TestCase):
-    def setUp(self):
-        self.vio = VioscreenHandler()
-        self.vio.sync_vioscreen({'853df6a15d131b2c'})
-    
-    def tearDown(self):
-        del self.vio
+    @classmethod
+    def setUpClass(cls):
+        cls.vio = VioscreenHandler()
+        cls.vio.sync_vioscreen({'853df6a15d131b2c'})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.vio.flush_vioscreen_db()
+        del cls.vio
 
     def test_get_token(self):
         token = self.vio.get_token()
-        self.assertEqual(len(token), 259)
+        self.assertIsNotNone(token)
 
     def test_get_users(self):
         users = self.vio.get_users()
@@ -44,15 +48,11 @@ class TestVioscreenHandler(TestCase):
         for i in res:
             self.assertIn(i, exp)
 
-    def test_pull_vioscreen_data_inval_barcode(self):
-        with self.assertRaises(ValueError):
-            self.vio.pull_vioscreen_data('notbarcode')
-
     def test_get_init_surveys(self):
         res = self.vio.get_init_surveys()
         exp = '853df6a15d131b2c'
         self.assertIn(exp, res.keys())
-        self.asserEqual('Finished', res[exp])
+        self.assertEqual('Finished', res[exp])
 
     def test_update_status(self):
         survey_id = '853df6a15d131b2c'
@@ -68,21 +68,21 @@ class TestVioscreenHandler(TestCase):
 
         self.assertEqual('Finished', res['status'])
         self.assertEqual(survey_id, res['survey_id'])
-        self.assertEqual(datetime, type(res['pulldown_date']))
+        self.assertIsNotNone(res['pulldown_date'])
 
     def test_insert_survey(self):
         survey_id = u'4fa6fd0e4f93adea'
         
-        self.vio.insert_suvey(survey_id, 'Finished')
+        self.vio.insert_survey(survey_id, 'Finished')
         sql = '''SELECT * FROM ag.vioscreen_surveys WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchone(sql, [survey_id])
         
         self.assertEqual('Finished', res['status'])
         self.assertEqual(survey_id, res['survey_id'])
-        self.assertEqual(datetime, type(res['pulldown_date']))
+        self.assertIsNotNone(res['pulldown_date'])
         
     def test_insert_survey_duplicate(self):
-        with self.assertRaises(ValueErrorr):
+        with self.assertRaises(ValueError):
             self.vio.insert_survey('853df6a15d131b2c', 'Finished')
 
     def test_get_vio_survey_ids_not_in_ag(self):
@@ -147,15 +147,9 @@ class TestVioscreenHandler(TestCase):
 
         for i in sessions:
             sql = """SELECT * FROM ag.vioscreen_{0} WHERE survey_id = %s""".format(i)
-            data = self.sql_handler.execute_fetchall(sql, [survey_id])
+            data = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
             self.assertIsNotNone(data)
             self.assertIn('survey_id', data[0].keys())
-
-    def test_sync_vioscreen_duplicate(self):
-        survey_ids = {'853df6a15d131b2c'}
-
-        with self.assertRaises(ValueError):
-            self.vio.sync_vioscreen(survey_ids)
 
     def test_sync_vioscreen_inval_param(self):
         survey_ids = ['853df6a15d131b2c']
@@ -165,47 +159,173 @@ class TestVioscreenHandler(TestCase):
             self.vio.sync_vioscreen(survey_ids_1)
              
     def test_pull_vioscreen_data(self):
-        barcode = '000015562'
-        res = self.vio.pull_vioscreen_data(barcode)
+        barcodes = ['000015562']
+        res, failures = self.vio.pull_vioscreen_data(barcodes)
         self.assertIsNotNone(res)
-        columns = ['amount', 'code', 'description', 'survey_id',
-                   'valuetype', 'foodcomponenttype', 'fooddatadefinition',
-                   'precision', 'shortdescription', 'consumptionadjustment'
-                   'created', 'data', 'foodcode', 'foodgroup', 'frequency',
-                   'servingfrequencytext', 'servingsizetext', 'lowerlimit',
-                   'name', 'score', 'type', 'upperlimit']
+        columns = ['BARCODE', 'AMOUNT', 'CODE', 'DESCRIPTION', 'SURVEY_ID',
+                   'VALUETYPE', 'FOODCOMPONENTTYPE', 'FOODDATADEFINITION',
+                   'PRECISION', 'SHORTDESCRIPTION', 'CONSUMPTIONADJUSTMENT',
+                   'CREATED', 'DATA', 'FOODCODE', 'FOODGROUP', 'FREQUENCY',
+                   'SERVINGFREQUENCYTEXT', 'SERVINGSIZETEXT', 'LOWERLIMIT',
+                   'NAME', 'SCORE', 'TYPE', 'UPPERLIMIT']
         for i in columns:
             self.assertIn(i, res.columns)
 
+    def test_pull_vioscreen_data_one_barcode(self):
+        survey_id = u'1a8ae69fae6aa0fd'
+        barcodes = ['000040325']
+        foodcomponents = [{u'amount': 0.0,
+                           u'code': u'acesupot',
+                           u'description': u'Acesulfame Potassium',
+                           'survey_id': u'1a8ae69fae6aa0fd',
+                           u'units': u'mg',
+                           u'valueType': u'Amount'},
+                          {u'amount': 29.5868480021635,
+                           u'code': u'addsugar',
+                           u'description': u'Added Sugars',
+                           'survey_id': u'1a8ae69fae6aa0fd',
+                           u'units': u'g',
+                           u'valueType': u'Amount'},
+                          {u'amount': 27.345585189008,
+                           u'code': u'adsugtot',
+                           u'description': u'Added Sugars (by Total Sugars)',
+                           'survey_id': u'1a8ae69fae6aa0fd',
+                           u'units': u'g',
+                           u'valueType': u'Amount'}]
+        percentenergy = [{u'amount': 29.3328087363491,
+                          u'code': u'%fat',
+                          u'description': u'Percent of calories from Fat',
+                          u'foodComponentType': 1,
+                          u'foodDataDefinition': None,
+                          u'precision': 0,
+                          u'shortDescription': u'Fat',
+                          'survey_id': u'1a8ae69fae6aa0fd',
+                          u'units': u'%'},
+                         {u'amount': 15.7438637903384,
+                          u'code': u'%protein',
+                          u'description': u'Percent of calories from Protein',
+                          u'foodComponentType': 1,
+                          u'foodDataDefinition': None,
+                          u'precision': 0,
+                          u'shortDescription': u'Protein',
+                          'survey_id': u'1a8ae69fae6aa0fd',
+                          u'units': u'%'}]
+        mpeds = [{u'amount': 0.000623145173877886,
+                 u'code': u'A_BEV',
+                 u'description': u'MPED: Total drinks of alcohol',
+                 u'units': u'alc_drinks',
+                 'survey_id': u'1a8ae69fae6aa0fd',
+                 u'valueType': u'Amount'},
+                {u'amount': 0.0,
+                 u'code': u'A_CAL',
+                 u'description': u'MPED: Calories from alcoholic beverages',
+                 'survey_id': u'1a8ae69fae6aa0fd',
+                 u'units': u'kcal',
+                 u'valueType': u'Amount'}] 
+        eatingpatterns = [{u'amount': 4.85534558425067,
+                           u'code': u'ADDEDFATS',
+                           u'description': u'Eating Pattern',
+                           'survey_id': u'1a8ae69fae6aa0fd',
+                           u'units': None,
+                           u'valueType': u'Amount'},
+                          {u'amount': 0.000623145173877886,
+                           u'code': u'ALCOHOLSERV',
+                           u'description': u'Eating Pattern',
+                           'survey_id': u'1a8ae69fae6aa0fd',
+                           u'units': None,
+                           u'valueType': u'Amount'}]
+        foodconsumption = [{u'amount': 1.0,
+                            u'consumptionAdjustment': 1.0,
+                            u'created': u'2017-07-29T06:55:57.537',
+                            u'data': [{"units": "mg", "amount": 0.0, "code": "acesupot", "description": "Acesulfame Potassium", "valueType": "Amount"}],
+                            u'description': u'All other cheese, such as American, cheddar or cream cheese, including cheese used in cooking',
+                            u'foodCode': u'70005',
+                            u'foodGroup': u'Cheese and Dairy Products',
+                            u'frequency': 52,
+                            u'servingFrequencyText': u'1 per week',
+                            u'servingSizeText': u'1 slice (1 oz), 1/4 cup shredded, 2 tablespoons cream cheese',
+                            'survey_id': u'1a8ae69fae6aa0fd'}]
+        dietaryscore = [{u'lowerLimit': 0.0,
+                         u'name': u'Greens and Beans',
+                         u'score': 5.0,
+                         'survey_id': u'1a8ae69fae6aa0fd',
+                         u'type': u'GreensAndBeans',
+                         u'upperLimit': 5.0},
+                        {u'lowerLimit': 0.0,
+                         u'name': u'Total Vegetables',
+                         u'score': 5.0,
+                         'survey_id': u'1a8ae69fae6aa0fd',
+                         u'type': u'TotalVegetables',
+                         u'upperLimit': 5.0}]
+        sessions = {'foodcomponents': foodcomponents,
+                    'percentenergy': percentenergy,
+                    'mpeds': mpeds,
+                    'eatingpatterns': eatingpatterns,
+                    'foodconsumption': foodconsumption,
+                    'dietaryscore': dietaryscore}
+        self.vio.insert_foodcomponents(foodcomponents)
+        self.vio.insert_percentenergy(percentenergy)
+        self.vio.insert_mpeds(mpeds)
+        self.vio.insert_eatingpatterns(eatingpatterns)
+        self.vio.insert_foodconsumption(foodconsumption)
+        # insert_foodconsumption alters the data parameter
+        for row in foodconsumption:
+            row['data'] = json.loads(row['data'])
+        self.vio.insert_dietaryscore(dietaryscore)
 
-    def test_pull_vioscreen_data_inval_param(self):
-        barcode = '000015562'
-        with self.assertRaises(TypeError):
-            self.vio.pull_vioscreen_data(barcode, foodcomponents = 1)
+        res, failures = self.vio.pull_vioscreen_data(barcodes)
+        res_foodcomponents = res.loc['foodcomponents']
+        res_percentenergy = res.loc['percentenergy']
+        res_mpeds = res.loc['mpeds']
+        res_eatingpatterns = res.loc['eatingpatterns']
+        res_foodconsumption = res.loc['foodconsumption']
+        res_dietaryscore = res.loc['dietaryscore']
+        # Dict of DataFrames
+        res_sessions = {'foodcomponents': res_foodcomponents,
+                        'percentenergy': res_percentenergy,
+                        'mpeds': res_mpeds,
+                        'eatingpatterns': res_eatingpatterns,
+                        'foodconsumption': res_foodconsumption,
+                        'dietaryscore': res_dietaryscore}
+        # Filters only columns from the original data
+        for session in sessions:
+            keys = [key.upper() for key in sessions[session][0]]
+            res_sessions[session] = res_sessions[session][keys]
+        # Converts each DataFrame to a dict to compare with the original data
+        res_sessions = {session: res_sessions[session].to_dict('records')
+                        for session in res_sessions}
+        for session in sessions:
+            for row in range(len(sessions[session])):
+                self.assertEqual(sorted(sessions[session][row].values()),
+                                 sorted(res_sessions[session][row].values()))
 
     def test_pull_vioscreen_data_inval_barcode(self):
-        barcode = 'notbarcode'
+        barcodes = ['notbarcode']
+        res, failures = self.vio.pull_vioscreen_data(barcodes)
+        self.assertIn(barcodes[0], failures)
+
+    def test_pull_vioscreen_data_inval_input(self):
         with self.assertRaises(ValueError):
-            self.vio.pull_vioscreen_data(barcode)
+            self.vio.pull_vioscreen_data('notbarcode')
 
     def test_insert_foodcomponents(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 0.0,
                  u'code': u'acesupot',
                  u'description': u'Acesulfame Potassium',
-                 'survey_id': 'dd8445986318aed4',
+                 'survey_id': u'dd8445986318aed4',
                  u'units': u'mg',
                  u'valueType': u'Amount'},
                 {u'amount': 29.5868480021635,
                  u'code': u'addsugar',
                  u'description': u'Added Sugars (by Available Carbohydrate)',
-                 'survey_id': 'dd8445986318aed4',
+                 'survey_id': u'dd8445986318aed4',
                  u'units': u'g',
                  u'valueType': u'Amount'},
                 {u'amount': 27.345585189008,
                  u'code': u'adsugtot',
                  u'description': u'Added Sugars (by Total Sugars)',
-                 'survey_id': 'dd8445986318aed4',
+                 'survey_id': u'dd8445986318aed4',
                  u'units': u'g',
                  u'valueType': u'Amount'}]
         res = self.vio.insert_foodcomponents(data)
@@ -215,30 +335,33 @@ class TestVioscreenHandler(TestCase):
                  WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
+        # Compares each row of original data to those of pulled data
+        # The rows should all be the same, with the exception of keys,
+        # which are always lowercase when pulled from the db
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
 
     def test_insert_percentenergy(self):
         survey_id = u'dd8445986318aed4'
-        data =  [{u'amount': 15.743863790338366,
-                  u'code': u'%protein',
-                  u'description': u'Percent of calories from Protein',
-                  u'foodComponentType': 1,
-                  u'foodDataDefinition': None,
-                  u'precision': 0,
-                  u'shortDescription': u'Protein',
-                  'survey_id': 'dd8445986318aed4',
-                  u'units': u'%'},
-                 {u'amount': 29.332808736349087,
+        data =  [{u'amount': 29.3328087363491,
                   u'code': u'%fat',
                   u'description': u'Percent of calories from Fat',
                   u'foodComponentType': 1,
                   u'foodDataDefinition': None,
                   u'precision': 0,
                   u'shortDescription': u'Fat',
-                  'survey_id': 'dd8445986318aed4',
-                  u'units': u'%'}]       
+                  'survey_id': u'dd8445986318aed4',
+                  u'units': u'%'},
+                 {u'amount': 15.7438637903384,
+                  u'code': u'%protein',
+                  u'description': u'Percent of calories from Protein',
+                  u'foodComponentType': 1,
+                  u'foodDataDefinition': None,
+                  u'precision': 0,
+                  u'shortDescription': u'Protein',
+                  'survey_id': u'dd8445986318aed4',
+                  u'units': u'%'}]
         res = self.vio.insert_percentenergy(data)
         self.assertEqual(res, len(data))
 
@@ -247,8 +370,8 @@ class TestVioscreenHandler(TestCase):
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
     
     def test_insert_mpeds(self):
         survey_id = u'dd8445986318aed4'
@@ -272,10 +395,10 @@ class TestVioscreenHandler(TestCase):
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
 
-    def test_insert_eatingpattern(self):
+    def test_insert_eatingpatterns(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 4.85534558425067,
                  u'code': u'ADDEDFATS',
@@ -289,53 +412,41 @@ class TestVioscreenHandler(TestCase):
                  'survey_id': u'dd8445986318aed4',
                  u'units': None,
                  u'valueType': u'Amount'}]
-        res = self.vio.insert_eatingpattern(data)
+        res = self.vio.insert_eatingpatterns(data)
         self.assertEqual(res, len(data))
 
-        sql = '''SELECT * FROM ag.vioscreen_eatingpattern
+        sql = '''SELECT * FROM ag.vioscreen_eatingpatterns
                  WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
 
     def test_insert_foodconsumption(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 1.0,
                  u'consumptionAdjustment': 1.0,
                  u'created': u'2017-07-29T06:55:57.537',
-                 u'data': [{u'amount': 0.0,
-                            u'code': u'acesupot',
-                            u'description': u'Acesulfame Potassium',
-                            u'units': u'mg',
-                            u'valueType': u'Amount'},
-                           {u'amount': 0.0974593223151511,
-                            u'code': u'addsugar',
-                            u'description': u'Added Sugar',
-                            u'units': u'g',
-                            u'valueType': u'Amount'}]
-                 u'description': u'All other cheese, such as American,
-                                 cheddar or cream cheese, including
-                                 cheese used in cooking',
+                 u'data': [{"units": "mg", "amount": 0.0, "code": "acesupot", "description": "Acesulfame Potassium", "valueType": "Amount"}],
+                 u'description': u'All other cheese, such as American, cheddar or cream cheese, including cheese used in cooking',
                  u'foodCode': u'70005',
                  u'foodGroup': u'Cheese and Dairy Products',
                  u'frequency': 52,
                  u'servingFrequencyText': u'1 per week',
-                 u'servingSizeText': u'1 slice (1 oz),
-                                     1/4 cup shredded,
-                                     2 tablespoons cream cheese',
+                 u'servingSizeText': u'1 slice (1 oz), 1/4 cup shredded, 2 tablespoons cream cheese',
                  'survey_id': u'dd8445986318aed4'}]
         res = self.vio.insert_foodconsumption(data)
         self.assertEqual(res, len(data))
-
+        
         sql = '''SELECT * FROM ag.vioscreen_foodconsumption
                  WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            data[row]['data'] = json.loads(data[row]['data'])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
 
     def test_insert_dietaryscore(self):
         survey_id = u'dd8445986318aed4'
@@ -359,8 +470,8 @@ class TestVioscreenHandler(TestCase):
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
         res = [dict(r) for r in res]
         for row in range(len(data)):
-            for key in data[i].keys():
-                assertEqual(res[row][key.lower()], data[row][key])
+            for key in data[row].keys():
+                self.assertEqual(res[row][key.lower()], data[row][key])
 
 if __name__ == "__main__":
     main()
