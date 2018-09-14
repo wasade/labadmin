@@ -171,19 +171,6 @@ class TestVioscreenHandler(TestCase):
         for i in columns:
             self.assertIn(i, res.columns)
 
-    def test_pull_vioscreen_data_single(self):
-        barcode = '000015562'
-        res = self.vio.pull_vioscreen_data_single(barcode)
-        self.assertIsNotNone(res)
-        columns = ['BARCODE', 'AMOUNT', 'CODE', 'DESCRIPTION', 'SURVEY_ID',
-                   'VALUETYPE', 'FOODCOMPONENTTYPE', 'FOODDATADEFINITION',
-                   'PRECISION', 'SHORTDESCRIPTION', 'CONSUMPTIONADJUSTMENT',
-                   'CREATED', 'DATA', 'FOODCODE', 'FOODGROUP', 'FREQUENCY',
-                   'SERVINGFREQUENCYTEXT', 'SERVINGSIZETEXT', 'LOWERLIMIT',
-                   'NAME', 'SCORE', 'TYPE', 'UPPERLIMIT']
-        for i in columns:
-            self.assertIn(i, res.columns)
-
     def test_pull_vioscreen_data_one_barcode(self):
         survey_id = u'1a8ae69fae6aa0fd'
         barcodes = ['000040325']
@@ -312,134 +299,6 @@ class TestVioscreenHandler(TestCase):
                 self.assertEqual(sorted(sessions[session][row].values()),
                                  sorted(res_sessions[session][row].values()))
 
-    def test_pull_vioscreen_data_one_barcode_single(self):
-        survey_id = u'1a8ae69fae6aa0fd'
-        barcode = '000040325'
-        foodcomponents = [{u'amount': 0.0,
-                           u'code': u'acesupot',
-                           u'description': u'Acesulfame Potassium',
-                           'survey_id': u'1a8ae69fae6aa0fd',
-                           u'units': u'mg',
-                           u'valueType': u'Amount'},
-                          {u'amount': 29.5868480021635,
-                           u'code': u'addsugar',
-                           u'description': u'Added Sugars',
-                           'survey_id': u'1a8ae69fae6aa0fd',
-                           u'units': u'g',
-                           u'valueType': u'Amount'},
-                          {u'amount': 27.345585189008,
-                           u'code': u'adsugtot',
-                           u'description': u'Added Sugars (by Total Sugars)',
-                           'survey_id': u'1a8ae69fae6aa0fd',
-                           u'units': u'g',
-                           u'valueType': u'Amount'}]
-        percentenergy = [{u'amount': 29.3328087363491,
-                          u'code': u'%fat',
-                          u'description': u'Percent of calories from Fat',
-                          u'foodComponentType': 1,
-                          u'foodDataDefinition': None,
-                          u'precision': 0,
-                          u'shortDescription': u'Fat',
-                          'survey_id': u'1a8ae69fae6aa0fd',
-                          u'units': u'%'},
-                         {u'amount': 15.7438637903384,
-                          u'code': u'%protein',
-                          u'description': u'Percent of calories from Protein',
-                          u'foodComponentType': 1,
-                          u'foodDataDefinition': None,
-                          u'precision': 0,
-                          u'shortDescription': u'Protein',
-                          'survey_id': u'1a8ae69fae6aa0fd',
-                          u'units': u'%'}]
-        mpeds = [{u'amount': 0.000623145173877886,
-                 u'code': u'A_BEV',
-                 u'description': u'MPED: Total drinks of alcohol',
-                 u'units': u'alc_drinks',
-                 'survey_id': u'1a8ae69fae6aa0fd',
-                 u'valueType': u'Amount'},
-                {u'amount': 0.0,
-                 u'code': u'A_CAL',
-                 u'description': u'MPED: Calories from alcoholic beverages',
-                 'survey_id': u'1a8ae69fae6aa0fd',
-                 u'units': u'kcal',
-                 u'valueType': u'Amount'}] 
-        eatingpatterns = [{u'amount': 4.85534558425067,
-                           u'code': u'ADDEDFATS',
-                           u'description': u'Eating Pattern',
-                           'survey_id': u'1a8ae69fae6aa0fd',
-                           u'units': None,
-                           u'valueType': u'Amount'},
-                          {u'amount': 0.000623145173877886,
-                           u'code': u'ALCOHOLSERV',
-                           u'description': u'Eating Pattern',
-                           'survey_id': u'1a8ae69fae6aa0fd',
-                           u'units': None,
-                           u'valueType': u'Amount'}]
-        foodconsumption = [{u'amount': 1.0,
-                            u'consumptionAdjustment': 1.0,
-                            u'created': u'2017-07-29T06:55:57.537',
-                            u'data': [{"units": "mg", "amount": 0.0, "code": "acesupot", "description": "Acesulfame Potassium", "valueType": "Amount"}],
-                            u'description': u'All other cheese, such as American, cheddar or cream cheese, including cheese used in cooking',
-                            u'foodCode': u'70005',
-                            u'foodGroup': u'Cheese and Dairy Products',
-                            u'frequency': 52,
-                            u'servingFrequencyText': u'1 per week',
-                            u'servingSizeText': u'1 slice (1 oz), 1/4 cup shredded, 2 tablespoons cream cheese',
-                            'survey_id': u'1a8ae69fae6aa0fd'}]
-        dietaryscore = [{u'lowerLimit': 0.0,
-                         u'name': u'Greens and Beans',
-                         u'score': 5.0,
-                         'survey_id': u'1a8ae69fae6aa0fd',
-                         u'type': u'GreensAndBeans',
-                         u'upperLimit': 5.0},
-                        {u'lowerLimit': 0.0,
-                         u'name': u'Total Vegetables',
-                         u'score': 5.0,
-                         'survey_id': u'1a8ae69fae6aa0fd',
-                         u'type': u'TotalVegetables',
-                         u'upperLimit': 5.0}]
-        sessions = {'foodcomponents': foodcomponents,
-                    'percentenergy': percentenergy,
-                    'mpeds': mpeds,
-                    'eatingpatterns': eatingpatterns,
-                    'foodconsumption': foodconsumption,
-                    'dietaryscore': dietaryscore}
-        self.vio.insert_foodcomponents(foodcomponents)
-        self.vio.insert_percentenergy(percentenergy)
-        self.vio.insert_mpeds(mpeds)
-        self.vio.insert_eatingpatterns(eatingpatterns)
-        self.vio.insert_foodconsumption(foodconsumption)
-        # insert_foodconsumption alters the data parameter
-        for row in foodconsumption:
-            row['data'] = json.loads(row['data'])
-        self.vio.insert_dietaryscore(dietaryscore)
-
-        res = self.vio.pull_vioscreen_data_single(barcodes)
-        res_foodcomponents = res.loc['foodcomponents']
-        res_percentenergy = res.loc['percentenergy']
-        res_mpeds = res.loc['mpeds']
-        res_eatingpatterns = res.loc['eatingpatterns']
-        res_foodconsumption = res.loc['foodconsumption']
-        res_dietaryscore = res.loc['dietaryscore']
-        # Dict of DataFrames
-        res_sessions = {'foodcomponents': res_foodcomponents,
-                        'percentenergy': res_percentenergy,
-                        'mpeds': res_mpeds,
-                        'eatingpatterns': res_eatingpatterns,
-                        'foodconsumption': res_foodconsumption,
-                        'dietaryscore': res_dietaryscore}
-        # Filters only columns from the original data
-        for session in sessions:
-            keys = [key.upper() for key in sessions[session][0]]
-            res_sessions[session] = res_sessions[session][keys]
-        # Converts each DataFrame to a dict to compare with the original data
-        res_sessions = {session: res_sessions[session].to_dict('records')
-                        for session in res_sessions}
-        for session in sessions:
-            for row in range(len(sessions[session])):
-                self.assertEqual(sorted(sessions[session][row].values()),
-                                 sorted(res_sessions[session][row].values()))
-
     def test_pull_vioscreen_data_inval_barcode(self):
         barcodes = ['notbarcode']
         res, failures = self.vio.pull_vioscreen_data(barcodes)
@@ -452,20 +311,7 @@ class TestVioscreenHandler(TestCase):
     def test_pull_vioscreen_data_no_input(self):
         res, failures = self.vio.pull_vioscreen_data([])
         self.assertIsNone(res)
-        self.assertIsNone(failures)
-
-    def test_pull_vioscreen_data_inval_barcode_single(self):
-        barcode = 'notbarcode'
-        res = self.vio.pull_vioscreen_data_single(barcodes)
-        self.assertIsNone(res)
-
-    def test_pull_vioscreen_data_inval_input_single(self):
-        with self.assertRaises(ValueError):
-            self.vio.pull_vioscreen_data_single(12345678)
-
-    def test_pull_vioscreen_data_no_input_single(self):
-        res = self.vio.pull_vioscreen_data_single('')
-        self.assertIsNone(res)
+        self.assertFalse(failures)
 
     def test_insert_foodcomponents(self):
         survey_id = u'dd8445986318aed4'

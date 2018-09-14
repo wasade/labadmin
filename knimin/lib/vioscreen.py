@@ -425,6 +425,9 @@ class VioscreenHandler(object):
                  %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, dietaryscore)
 
+    # This function currently formats data in a way that could be improved.
+    # Although the function is not too useful in its current state, it may
+    # be useful to keep as a basis for a more refined pull function
     def pull_vioscreen_data(self, barcodes):
         """Pulls data from the six ag.vioscreen session tables and compiles
            the data into a tsv
@@ -497,62 +500,6 @@ class VioscreenHandler(object):
         all_df.columns = all_df.columns.str.upper()
         all_df.to_csv('vioscreen.tsv', sep='\t', index=False)
         return all_df, failures
-
-    def pull_vioscreen_data_single(self, barcode):
-        """Pulls data from the six ag.vioscreen session tables and compiles
-           the data into a tsv
-
-        Parameters
-        ----------
-        barcode: str
-            Barcode for which data is desired
-
-        Return
-        ------
-        DataFrame
-            The external vioscreen data pulled for a specific barcode
-        """
-        # Gets corresponding survey ID of barcode and also verifies
-        # that the barcode has data to be pulled
-        if type(barcode) is not str:
-            raise ValueError('barcode must have type str')
-
-        sql = """SELECT survey_id FROM ag.source_barcodes_surveys
-                 WHERE barcode = %s"""
-        sid = self.sql_handler.execute_fetchone(sql, [barcode])
-        if not sid:
-            return None
-
-        # Grabs all vioscreen sessions
-        sql = """SELECT * FROM ag.vioscreen_sessions"""
-        sessions = self.sql_handler.execute_fetchall(sql)
-        sessions = [x[0] for x in sessions]
-
-        # Empty dataframe used to initialize format
-        tables = []
-        for i in sessions:
-            sql = """SELECT * FROM ag.vioscreen_{0} WHERE survey_id = %s""".format(i)
-            data = self.sql_handler.execute_fetchone(sql, sid)
-            # Stops the loop if the barcode does not have relevant data
-            if not data:
-                continue
-            data = [dict(r) for r in data]
-            df = pd.DataFrame(data)
-            tables.append(df)
-        if not tables:
-            return None
-        df = pd.concat(tables, keys=sessions, sort=False)
-        # Assigns barcode to every level and adds df to list of dfs
-        df['barcode'] = barcode
-
-        # Reorders all_df so that the last column (barcodes) is first
-        cols = df.columns.tolist()
-        cols = cols[-1:] + cols[:-1]
-        df = df[cols]
-        # Capitalizes all column headers
-        df.columns = all_df.columns.str.upper()
-        df.to_csv('vioscreen.tsv', sep='\t', index=False)
-        return df
 
     # Testing function
     def flush_vioscreen_db(self):
