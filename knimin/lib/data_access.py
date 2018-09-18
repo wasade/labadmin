@@ -746,6 +746,7 @@ class KniminAccess(object):
                           WHERE external_survey = %s AND barcode IN %s"""
         external = defaultdict(dict)
         unknown_external = {}
+
         for e in external_surveys:
             for survey_id, survey, answers in self._con.execute_fetchall(
                     external_sql, [e, tuple(all_barcodes)]):
@@ -1741,6 +1742,7 @@ class KniminAccess(object):
                               separator="\t", survey_id_col="survey_id",
                               trim=None):
         """Stores third party survey answers in the database
+
         Parameters
         ----------
         in_file : open file or StringIO
@@ -1757,10 +1759,12 @@ class KniminAccess(object):
         trim : str
             Regex to trim the survey id column, using re.sub(trim, '', sid)
             Default None
+
         Returns
         -------
         count : int
             Number of rows inserted
+
         Raises
         ------
         ValueError

@@ -147,22 +147,22 @@ class VioscreenHandler(object):
         # only ones that do not have their data in the ag database
         ids_to_sync = self.get_vio_survey_ids_not_in_ag(user_ids)
 
-        # gets all survey info of ids_to_sync and updates users with filtered surveys
-        users = {}
-        users_to_sync = []
-        for i in self._users['users']:
-            if i['username'] in ids_to_sync:
-                users_to_sync.append(i)
-        users['users'] = users_to_sync
+        # gets all survey info of ids_to_sync and updates users
+        users = {'users': []}
+        for user in self._users['users']:
+            if user['username'] in ids_to_sync:
+                users['users'].append(user['username'])
 
+        # gets list of surveys in AG database along with their statuses
         survey_ids = self.get_init_surveys()
 
         for user in users['users']:
             username = user['username']
 
             try:
-                session_data = self.get('https://api.viocare.com/KLUCB/users/%s/sessions'
-                                         % username, headers=self._headers)
+                session_data = self.get('https://api.viocare.com\
+                                            /KLUCB/users/%s/sessions'
+                                        % username, headers=self._headers)
             except ValueError:
                 # I don't understand this, but "JDebelius" does not exist.
                 # must have been a test account since it's not an AG survey id
@@ -170,8 +170,9 @@ class VioscreenHandler(object):
 
             for session_detail in session_data['sessions']:
                 session_id = session_detail['sessionId']
-                detail = self.get('https://api.viocare.com/KLUCB/sessions/%s/detail'
-                                   % session_id, headers=self._headers)
+                detail = self.get('https://api.viocare.com\
+                                    /KLUCB/sessions/%s/detail'
+                                  % session_id, headers=self._headers)
 
                 # Adds new survey information to database
                 if username not in survey_ids:
@@ -186,14 +187,18 @@ class VioscreenHandler(object):
                 if detail['status'] != 'Finished':
                     continue
 
-                # only get the first finished one, not sure how to handle a situation if someone has multiple right now
                 try:
-                    foodcomponents = self.get_session_data(session_id, 'foodcomponents')['data']
-                    percentenergy = self.get_session_data(session_id, 'percentenergy')['calculations']
+                    foodcomponents = self.get_session_data(session_id,\
+                        'foodcomponents')['data']
+                    percentenergy = self.get_session_data(session_id,\
+                        'percentenergy')['calculations']
                     mpeds = self.get_session_data(session_id, 'mpeds')['data']
-                    eatingpatterns = self.get_session_data(session_id, 'eatingpatterns')['data']
-                    foodconsumption = self.get_session_data(session_id, 'foodconsumption')['foodConsumption']
-                    dietaryscore = self.get_session_data(session_id, 'dietaryscore')['dietaryScore']['scores']
+                    eatingpatterns = self.get_session_data(session_id,\
+                        'eatingpatterns')['data']
+                    foodconsumption = self.get_session_data(session_id,\
+                        'foodconsumption')['foodConsumption']
+                    dietaryscore = self.get_session_data(session_id,\
+                        'dietaryscore')['dietaryScore']['scores']
                 except ValueError:
                     # sometimes there is a status Finished w/o data...
                     continue
@@ -225,8 +230,8 @@ class VioscreenHandler(object):
         sql = """SELECT survey_id, status from ag.vioscreen_surveys"""
         data = self.sql_handler.execute_fetchall(sql)
         survey_ids = {}
-        for r in data:
-            survey_ids[r[0]] = r[1]
+        for row in data:
+            survey_ids[row[0]] = row[1]
         return survey_ids
 
     def update_status(self, survey_id, status):
@@ -343,10 +348,11 @@ class VioscreenHandler(object):
         int
             The number of rows added to the database
         """
-        sql = """INSERT INTO ag.vioscreen_percentenergy (amount, code,
-                 description, foodComponentType, foodDataDefinition, precision,
-                 shortDescription, survey_id, units) VALUES (%s, %s, %s, %s,
-                 %s, %s, %s, %s, %s)"""
+        sql = """INSERT INTO ag.vioscreen_percentenergy
+                    (amount, code, description, foodComponentType,
+                     foodDataDefinition, precision, shortDescription,
+                     survey_id, units)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, percentenergy)
 
     def insert_mpeds(self, mpeds):
@@ -362,8 +368,10 @@ class VioscreenHandler(object):
         int
             The number of rows added to the database
         """
-        sql = """INSERT INTO ag.vioscreen_mpeds (amount, code, description, survey_id,
-                 units, valueType) VALUES (%s, %s, %s, %s, %s, %s)"""
+        sql = """INSERT INTO ag.vioscreen_mpeds
+                    (amount, code, description, survey_id,
+                     units, valueType)
+                 VALUES (%s, %s, %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, mpeds)
 
     def insert_eatingpatterns(self, eatingpatterns):
@@ -379,8 +387,9 @@ class VioscreenHandler(object):
         int
             The number of rows added to the database
         """
-        sql = """INSERT INTO ag.vioscreen_eatingpatterns (amount, code,
-                 description, survey_id, units, valueType)
+        sql = """INSERT INTO ag.vioscreen_eatingpatterns
+                    (amount, code, description,
+                     survey_id, units, valueType)
                  VALUES (%s, %s, %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, eatingpatterns)
 
@@ -398,10 +407,10 @@ class VioscreenHandler(object):
             The number of rows added to the database
         """
         sql = """INSERT INTO ag.vioscreen_foodconsumption
-                 (amount, consumptionAdjustment, created, data, description,
-                 foodCode, foodGroup, frequency, servingFrequencyText,
-                 servingSizeText, survey_id) VALUES 
-                 (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                    (amount, consumptionAdjustment, created, data, description,
+                     foodCode, foodGroup, frequency, servingFrequencyText,
+                     servingSizeText, survey_id)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
         # convert large data dict to json for data storage
         for row in foodconsumption:
             row['data'] = json.dumps(row['data'])
@@ -420,9 +429,10 @@ class VioscreenHandler(object):
         int
             The number of rows added to the database
         """
-        sql = """INSERT INTO ag.vioscreen_dietaryscore (lowerLimit, name,
-                 score, survey_id, type, upperLimit) VALUES (%s, %s,
-                 %s, %s, %s, %s)"""
+        sql = """INSERT INTO ag.vioscreen_dietaryscore 
+                    (lowerLimit, name, score, survey_id, 
+                     type, upperLimit) 
+                 VALUES (%s, %s, %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, dietaryscore)
 
     # This function currently formats data in a way that could be improved.
@@ -473,7 +483,8 @@ class VioscreenHandler(object):
             sid = survey_ids[barcode]
             tables = []
             for i in sessions:
-                sql = """SELECT * FROM ag.vioscreen_{0} WHERE survey_id = %s""".format(i)
+                sql = """SELECT * FROM ag.vioscreen_{0} 
+                         WHERE survey_id = %s""".format(i)
                 data = self.sql_handler.execute_fetchall(sql, [sid])
                 if not data:
                     continue
