@@ -151,7 +151,7 @@ class VioscreenHandler(object):
         users = {'users': []}
         for user in self._users['users']:
             if user['username'] in ids_to_sync:
-                users['users'].append(user['username'])
+                users['users'].append(user)
 
         # gets list of surveys in AG database along with their statuses
         survey_ids = self.get_init_surveys()
@@ -160,8 +160,7 @@ class VioscreenHandler(object):
             username = user['username']
 
             try:
-                session_data = self.get('https://api.viocare.com\
-                                            /KLUCB/users/%s/sessions'
+                session_data = self.get('https://api.viocare.com/KLUCB/users/%s/sessions'
                                         % username, headers=self._headers)
             except ValueError:
                 # I don't understand this, but "JDebelius" does not exist.
@@ -170,8 +169,7 @@ class VioscreenHandler(object):
 
             for session_detail in session_data['sessions']:
                 session_id = session_detail['sessionId']
-                detail = self.get('https://api.viocare.com\
-                                    /KLUCB/sessions/%s/detail'
+                detail = self.get('https://api.viocare.com/KLUCB/sessions/%s/detail'
                                   % session_id, headers=self._headers)
 
                 # Adds new survey information to database
