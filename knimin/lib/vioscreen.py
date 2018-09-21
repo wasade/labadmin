@@ -9,6 +9,9 @@ from knimin import config
 from knimin.lib.data_access import SQLHandler
 
 class VioscreenHandler(object):
+    """VioScreen handler object. Used to pull data from VioScreen
+       RESTful API and store data in AG database.
+    """
     def __init__(self):
         with open('./auth.json') as f:
             self._key = json.load(f)['key']
@@ -16,8 +19,9 @@ class VioscreenHandler(object):
             self._pw = json.load(f)['pw']
         self._session = requests.Session()
         # setup our HTTP header data
-        self._headers = None
-        self._users = None
+        self._headers = {'Accept': 'application/json',
+                         'Authorization': 'Bearer %s' % self.get_token()}
+        self._users = self.get_users()
         self.sql_handler = SQLHandler(config)
 
     # get an API token
@@ -30,8 +34,8 @@ class VioscreenHandler(object):
             The API token
         """
         return self.post('https://api.viocare.com/%s/auth/login' % self._key,
-                     data={"username": self._user, 
-                           "password": self._pw})['token']
+                         data={"username": self._user, 
+                               "password": self._pw})['token']
     
     def get_users(self):
         """Gets list of users that vioscreen has data for
@@ -41,13 +45,29 @@ class VioscreenHandler(object):
         list of dict
             List of users that have vioscreen data
         """
-        if not self._headers:
-            self._headers = {'Accept': 'application/json',
-                             'Authorization': 'Bearer %s' % self.get_token()}
         return self.get('https://api.viocare.com/%s/users' % self._key,
                          headers=self._headers)
 
     def get(self, url, retries=5, **kwargs):
+        """Extension of get method from requests. Will get the requested
+           data and return it, or return an error message if data was
+           unable to be retrieved
+
+           Parameters
+           ----------
+           url
+               The url from which data is requested
+           retries
+               Number of tries the function takes if we refresh the token
+               each time a retrieval fails
+           **kwargs
+               Optional arguments that requests takes
+        
+           Return
+           ------
+           dict
+               Data returned from get request
+        """
         for i in range(retries):
             req = self._session.get(url, **kwargs)
             if req.status_code != 200:  # HTTP status code, 200 is all good
@@ -58,13 +78,31 @@ class VioscreenHandler(object):
                 if 'Code' in data and data['Code'] == 1016:
                     self._headers['token'] = self.get_token()
                 else:
-                    print(self._session.get, url, kwargs)
                     raise ValueError("Unable to make this query work")
             else:
                 return req.json()
         raise ValueError("Unable to make this query work")
 
     def post(self, url, retries=5, **kwargs):
+        """Extension of post method from requests. Will post and return
+           requested data and return it, or return an error message if data was
+           unable to be retrieved
+
+           Parameters
+           ----------
+           url
+               The url from which data is requested
+           retries
+               Number of tries the function takes if we refresh the token
+               each time a retrieval fails
+           **kwargs
+               Optional arguments that requests takes
+           
+           Return
+           ------
+           dict
+               Data returned from post request
+        """
         for i in range(retries):
             req = self._session.post(url, **kwargs)
             if req.status_code != 200:  # HTTP status code, 200 is all good
@@ -75,7 +113,6 @@ class VioscreenHandler(object):
                 if 'Code' in data and data['Code'] == 1016:
                     self._headers['token'] = self.get_token()
                 else:
-                    print(self._session.post, url, kwargs)
                     raise ValueError("Unable to make this query work")
             else:
                 return req.json()
@@ -118,9 +155,6 @@ class VioscreenHandler(object):
         dict:
             Food frequency questionnaire data
         """
-        if not self._headers:
-            self._headers = {'Accept': 'application/json',
-                             'Authorization': 'Bearer %s' % self.get_token()}
         return self.get('https://api.viocare.com/%s/sessions/%s/%s' %
                          (self._key, session_id, endpoint),
                          headers=self._headers)
@@ -135,12 +169,6 @@ class VioscreenHandler(object):
             Set of user_ids (identical to survey_ids) that
             are needed to have their data pulled. Default None (syncs all)
         """
-        if not self._headers:
-            self._headers = {'Accept': 'application/json',
-                             'Authorization': 'Bearer %s' % self.get_token()}
-        if not self._users:
-            self._users = self.get_users()
-
         if user_ids:
             if type(user_ids) is not set:
                 raise TypeError('user_ids should be type set')
@@ -439,6 +467,7 @@ class VioscreenHandler(object):
 
     # Testing function
     def flush_vioscreen_db(self):
+        """Flushes VioScreen data from AG database"""
         tables = ['foodcomponents', 'percentenergy', 'mpeds', 'eatingpatterns',
                   'foodconsumption', 'dietaryscore', 'surveys']
         for i in tables:
