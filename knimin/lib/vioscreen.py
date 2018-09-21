@@ -10,6 +10,10 @@ from knimin.lib.data_access import SQLHandler
 
 class VioscreenHandler(object):
     def __init__(self):
+        with open('./auth.json') as f:
+            self._key = json.load(f)['key']
+            self._user = json.load(f)['user']
+            self._pw = json.load(f)['pw']
         self._session = requests.Session()
         # setup our HTTP header data
         self._headers = None
@@ -25,9 +29,9 @@ class VioscreenHandler(object):
         str
             The API token
         """
-        return self.post('https://api.viocare.com/KLUCB/auth/login',
-                     data={"username": "APIAdminKLUCB", 
-                           "password": "APIAdminKLUCB"})['token']
+        return self.post('https://api.viocare.com/%s/auth/login' % self._key,
+                     data={"username": self._user, 
+                           "password": self._pw})['token']
     
     def get_users(self):
         """Gets list of users that vioscreen has data for
@@ -40,7 +44,7 @@ class VioscreenHandler(object):
         if not self._headers:
             self._headers = {'Accept': 'application/json',
                              'Authorization': 'Bearer %s' % self.get_token()}
-        return self.get('https://api.viocare.com/KLUCB/users',
+        return self.get('https://api.viocare.com/%s/users' % self._key,
                          headers=self._headers)
 
     def get(self, url, retries=5, **kwargs):
@@ -117,8 +121,8 @@ class VioscreenHandler(object):
         if not self._headers:
             self._headers = {'Accept': 'application/json',
                              'Authorization': 'Bearer %s' % self.get_token()}
-        return self.get('https://api.viocare.com/KLUCB/sessions/%s/%s' %
-                         (session_id, endpoint),
+        return self.get('https://api.viocare.com/%s/sessions/%s/%s' %
+                         (self._key, session_id, endpoint),
                          headers=self._headers)
 
     def sync_vioscreen(self, user_ids=None):
@@ -160,8 +164,8 @@ class VioscreenHandler(object):
             username = user['username']
 
             try:
-                session_data = self.get('https://api.viocare.com/KLUCB/users/%s/sessions'
-                                        % username, headers=self._headers)
+                session_data = self.get('https://api.viocare.com/%s/users/%s/sessions'
+                                        % (self._key, username), headers=self._headers)
             except ValueError:
                 # I don't understand this, but "JDebelius" does not exist.
                 # must have been a test account since it's not an AG survey id
@@ -169,8 +173,8 @@ class VioscreenHandler(object):
 
             for session_detail in session_data['sessions']:
                 session_id = session_detail['sessionId']
-                detail = self.get('https://api.viocare.com/KLUCB/sessions/%s/detail'
-                                  % session_id, headers=self._headers)
+                detail = self.get('https://api.viocare.com/%s/sessions/%s/detail'
+                                  % (self._key, session_id), headers=self._headers)
 
                 # Adds new survey information to database
                 if username not in survey_ids:
