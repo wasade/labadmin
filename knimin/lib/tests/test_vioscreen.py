@@ -1,7 +1,4 @@
 from unittest import TestCase, main
-from datetime import datetime
-from os.path import join, dirname, realpath
-from six import StringIO
 import json
 
 from knimin.lib.vioscreen import VioscreenHandler
