@@ -50,23 +50,23 @@ class VioscreenHandler(object):
 
     def get(self, url, retries=5, **kwargs):
         """Extension of get method from requests. Will get the requested
-           data and return it, or return an error message if data was
-           unable to be retrieved
+        data and return it, or return an error message if data was
+        unable to be retrieved
 
-           Parameters
-           ----------
-           url
-               The url from which data is requested
-           retries
-               Number of tries the function takes if we refresh the token
-               each time a retrieval fails
-           **kwargs
-               Optional arguments that requests takes
+        Parameters
+        ----------
+        url
+           The url from which data is requested
+        retries
+            Number of tries the function takes if we refresh the token
+            each time a retrieval fails
+        **kwargs
+            Optional arguments that requests takes
         
-           Return
-           ------
-           dict
-               Data returned from get request
+        Return
+        ------
+        dict
+            Data returned from get request
         """
         for i in range(retries):
             req = self._session.get(url, **kwargs)
@@ -85,23 +85,23 @@ class VioscreenHandler(object):
 
     def post(self, url, retries=5, **kwargs):
         """Extension of post method from requests. Will post and return
-           requested data and return it, or return an error message if data was
-           unable to be retrieved
+        requested data and return it, or return an error message if data was
+        unable to be retrieved
 
-           Parameters
-           ----------
-           url
-               The url from which data is requested
-           retries
-               Number of tries the function takes if we refresh the token
-               each time a retrieval fails
-           **kwargs
-               Optional arguments that requests takes
-           
-           Return
-           ------
-           dict
-               Data returned from post request
+        Parameters
+        ----------
+        url
+            The url from which data is requested
+        retries
+            Number of tries the function takes if we refresh the token
+            each time a retrieval fails
+        **kwargs
+            Optional arguments that requests takes
+        
+        Return
+        ------
+        dict
+            Data returned from post request
         """
         for i in range(retries):
             req = self._session.post(url, **kwargs)
@@ -141,7 +141,7 @@ class VioscreenHandler(object):
 
     def get_session_data(self, session_id, endpoint):
         """Pulls data from the vioscreen API based on 
-           a specific session ID and session type(ex. 'foodcomponents')
+        a specific session ID and session type(ex. 'foodcomponents')
 
         Parameters
         ----------
@@ -161,7 +161,7 @@ class VioscreenHandler(object):
 
     def sync_vioscreen(self, user_ids=None):
         """Pulls data from the vioscreen API and stores
-           the data into the AG database
+        the data into the AG database
 
         Parameters
         ----------
