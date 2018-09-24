@@ -1,10 +1,10 @@
 import requests
 import os
-import functools
 import json
 import pandas as pd
 
 from datetime import datetime
+from functools import partial
 from knimin import config
 from knimin.lib.data_access import SQLHandler
 
@@ -18,12 +18,17 @@ class VioscreenHandler(object):
             self._key = data['key']
             self._user = data['user']
             self._pw = data['pw']
+
         self._session = requests.Session()
+        # define partial functions for get and post
+        self.get = partial(self.request, self._session.get)
+        self.post = partial(self.request, self._session.post)
         # setup our HTTP header data
         self._headers = {'Accept': 'application/json',
                          'Authorization': 'Bearer %s' % self.get_token()}
         self._users = self.get_users()
         self.sql_handler = SQLHandler(config)
+
 
     # get an API token
     def get_token(self):
@@ -34,9 +39,13 @@ class VioscreenHandler(object):
         str
             The API token
         """
-        return self.post('https://api.viocare.com/%s/auth/login' % self._key,
-                         data={"username": self._user, 
-                               "password": self._pw})['token']
+        response = self.post('https://api.viocare.com/%s/auth/login'\
+                                    % self._key,
+                             data={"username": self._user,
+                                   "password": self._pw})
+        if 'token' not in response:
+            raise ValueError('Token request not successful')
+        return response['token']
     
     def get_users(self):
         """Gets list of users that vioscreen has data for
@@ -47,53 +56,20 @@ class VioscreenHandler(object):
             List of users that have vioscreen data
         """
         return self.get('https://api.viocare.com/%s/users' % self._key,
-                         headers=self._headers)
+                        headers=self._headers)
 
-    def get(self, url, retries=5, **kwargs):
-        """Extension of get method from requests. Will get the requested
-        data and return it, or return an error message if data was
-        unable to be retrieved
-
-        Parameters
-        ----------
-        url
-           The url from which data is requested
-        retries
-            Number of tries the function takes if we refresh the token
-            each time a retrieval fails
-        **kwargs
-            Optional arguments that requests takes
-        
-        Return
-        ------
-        dict
-            Data returned from get request
-        """
-        for i in range(retries):
-            req = self._session.get(url, **kwargs)
-            if req.status_code != 200:  # HTTP status code, 200 is all good
-                data = req.json()
-
-                # if we did not get a HTTP status code 200, than guess that the
-                # API token is no longer valid so get a new one and retry
-                if 'Code' in data and data['Code'] == 1016:
-                    self._headers['token'] = self.get_token()
-                else:
-                    raise ValueError("Unable to make this query work")
-            else:
-                return req.json()
-        raise ValueError("Unable to make this query work")
-
-    def post(self, url, retries=5, **kwargs):
-        """Extension of post method from requests. Will post and return
-        requested data and return it, or return an error message if data was
-        unable to be retrieved
+    def request(self, func, url, retries=5, **kwargs):
+        """Extension of get  and post methods from requests.
+        Will make a request for data and return it, or return an
+        error message if data was unable to be retrieved
 
         Parameters
         ----------
-        url
+        func: function
+            requests function being called, either GET or POST
+        url: str
             The url from which data is requested
-        retries
+        retries: int
             Number of tries the function takes if we refresh the token
             each time a retrieval fails
         **kwargs
@@ -102,10 +78,10 @@ class VioscreenHandler(object):
         Return
         ------
         dict
-            Data returned from post request
+            Data returned from HTTP request
         """
         for i in range(retries):
-            req = self._session.post(url, **kwargs)
+            req = func(url, **kwargs)
             if req.status_code != 200:  # HTTP status code, 200 is all good
                 data = req.json()
 
@@ -157,8 +133,8 @@ class VioscreenHandler(object):
             Food frequency questionnaire data
         """
         return self.get('https://api.viocare.com/%s/sessions/%s/%s' %
-                         (self._key, session_id, endpoint),
-                         headers=self._headers)
+                            (self._key, session_id, endpoint),
+                        headers=self._headers)
 
     def sync_vioscreen(self, user_ids=None):
         """Pulls data from the vioscreen API and stores
@@ -171,7 +147,7 @@ class VioscreenHandler(object):
             are needed to have their data pulled. Default None (syncs all)
         """
         if user_ids:
-            if type(user_ids) is not set:
+            if not isinstance(user_ids, set):
                 raise TypeError('user_ids should be type set')
         else:
             user_ids = {x['username'] for x in self._users['users']}
@@ -193,61 +169,63 @@ class VioscreenHandler(object):
             username = user['username']
 
             try:
-                session_data = self.get('https://api.viocare.com/%s/users/%s/sessions'
-                                        % (self._key, username), headers=self._headers)
+                session_data = self.get('https://api.viocare.com/'+\
+                                            '%s/users/%s/sessions' %
+                                            (self._key, username),
+                                        headers=self._headers)
             except ValueError:
                 # I don't understand this, but "JDebelius" does not exist.
                 # must have been a test account since it's not an AG survey id
                 continue
 
-            for session_detail in session_data['sessions']:
-                session_id = session_detail['sessionId']
-                detail = self.get('https://api.viocare.com/%s/sessions/%s/detail'
-                                  % (self._key, session_id), headers=self._headers)
+            session_detail = session_data[0]
+            session_id = session_detail['sessionId']
+            detail = self.get('https://api.viocare.com/'+\
+                                '%s/sessions/%s/detail' %
+                                (self._key, session_id),
+                              headers=self._headers)
 
-                # Adds new survey information to database
-                if username not in survey_ids:
-                    survey_ids[username] = detail['status']
-                    self.insert_survey(username, detail['status'])
-                # Updates status of vioscreen survey if it has changed
-                elif survey_ids[username] != detail['status']:
-                    survey_ids[username] = detail['status']
-                    self.update_status(username, detail['status'])
+            # Adds new survey information to database
+            if username not in survey_ids:
+                survey_ids[username] = detail['status']
+                self.insert_survey(username, detail['status'])
+            # Updates status of vioscreen survey if it has changed
+            elif survey_ids[username] != detail['status']:
+                survey_ids[username] = detail['status']
+                self.update_status(username, detail['status'])
 
-                # only finished surveys will have their data pulled
-                if detail['status'] != 'Finished':
-                    continue
+            # only finished surveys will have their data pulled
+            if detail['status'] != 'Finished':
+                continue
 
-                try:
-                    foodcomponents = self.get_session_data(session_id,\
-                        'foodcomponents')['data']
-                    percentenergy = self.get_session_data(session_id,\
-                        'percentenergy')['calculations']
-                    mpeds = self.get_session_data(session_id, 'mpeds')['data']
-                    eatingpatterns = self.get_session_data(session_id,\
-                        'eatingpatterns')['data']
-                    foodconsumption = self.get_session_data(session_id,\
-                        'foodconsumption')['foodConsumption']
-                    dietaryscore = self.get_session_data(session_id,\
-                        'dietaryscore')['dietaryScore']['scores']
-                except ValueError:
-                    # sometimes there is a status Finished w/o data...
-                    continue
-                foodcomponents = self.tidyfy(username, foodcomponents)
-                percentenergy = self.tidyfy(username, percentenergy)
-                mpeds = self.tidyfy(username, mpeds)
-                eatingpatterns = self.tidyfy(username, eatingpatterns)
-                foodconsumption = self.tidyfy(username, foodconsumption)
-                dietaryscore = self.tidyfy(username, dietaryscore)
+            try:
+                foodcomponents = self.get_session_data(session_id,\
+                    'foodcomponents')['data']
+                percentenergy = self.get_session_data(session_id,\
+                    'percentenergy')['calculations']
+                mpeds = self.get_session_data(session_id, 'mpeds')['data']
+                eatingpatterns = self.get_session_data(session_id,\
+                    'eatingpatterns')['data']
+                foodconsumption = self.get_session_data(session_id,\
+                    'foodconsumption')['foodConsumption']
+                dietaryscore = self.get_session_data(session_id,\
+                    'dietaryscore')['dietaryScore']['scores']
+            except ValueError:
+                # sometimes there is a status Finished w/o data...
+                continue
+            foodcomponents = self.tidyfy(username, foodcomponents)
+            percentenergy = self.tidyfy(username, percentenergy)
+            mpeds = self.tidyfy(username, mpeds)
+            eatingpatterns = self.tidyfy(username, eatingpatterns)
+            foodconsumption = self.tidyfy(username, foodconsumption)
+            dietaryscore = self.tidyfy(username, dietaryscore)
 
-                self.insert_foodcomponents(foodcomponents)
-                self.insert_percentenergy(percentenergy)
-                self.insert_mpeds(mpeds)
-                self.insert_eatingpatterns(eatingpatterns)
-                self.insert_foodconsumption(foodconsumption)
-                self.insert_dietaryscore(dietaryscore)
-
-                break
+            self.insert_foodcomponents(foodcomponents)
+            self.insert_percentenergy(percentenergy)
+            self.insert_mpeds(mpeds)
+            self.insert_eatingpatterns(eatingpatterns)
+            self.insert_foodconsumption(foodconsumption)
+            self.insert_dietaryscore(dietaryscore)
 
     # DB access functions
     def get_init_surveys(self):
