@@ -38,6 +38,11 @@ class VioscreenHandler(object):
         ------
         str
             The API token
+
+        Raises
+        ------
+        ValueError
+            If the post returned None
         """
         response = self.post('https://api.viocare.com/%s/auth/login'\
                                     % self._key,
@@ -308,6 +313,8 @@ class VioscreenHandler(object):
         sql: str
             SQL query specific to particular session insertion
             session_data : Data pulled from Vioscreen
+        session_data: list of dict
+            The data that is being stored into the AG database
 
         Return
         ------
