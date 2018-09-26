@@ -13,7 +13,7 @@ class VioscreenHandler(object):
        RESTful API and store data in AG database.
     """
     def __init__(self):
-        with open('knimin/auth.json') as f:
+        with open('.auth.json') as f:
             data = json.load(f)
             self._key = data['key']
             self._user = data['user']
