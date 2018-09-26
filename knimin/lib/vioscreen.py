@@ -151,28 +151,27 @@ class VioscreenHandler(object):
             Set of user_ids (identical to survey_ids) that
             are needed to have their data pulled. Default None (syncs all)
         """
+        all_vio_user_ids = {x['username'] for x in self._users['users']}
+        failures = []
         if user_ids:
             if not isinstance(user_ids, set):
                 raise TypeError('user_ids should be type set')
+            # Will only keep user ids that can be pulled from vioscreen
+            for user_id in user_ids:
+                if user_id not in all_vio_user_ids:
+                    failures.append(user_ids)
+                    user_ids.remove(user_id)
         else:
-            user_ids = {x['username'] for x in self._users['users']}
+            user_ids = all_vio_user_ids
 
         # takes all survey IDs from vio_screen survey info and filters
         # only ones that do not have their data in the ag database
         ids_to_sync = self.get_vio_survey_ids_not_in_ag(user_ids)
 
-        # gets all survey info of ids_to_sync and updates users
-        users = {'users': []}
-        for user in self._users['users']:
-            if user['username'] in ids_to_sync:
-                users['users'].append(user)
-
         # gets list of surveys in AG database along with their statuses
         survey_ids = self.get_init_surveys()
 
-        for user in users['users']:
-            username = user['username']
-
+        for username in ids_to_sync:
             try:
                 session_data = self.get('https://api.viocare.com/'+\
                                             '%s/users/%s/sessions' %
@@ -183,7 +182,7 @@ class VioscreenHandler(object):
                 # must have been a test account since it's not an AG survey id
                 continue
 
-            session_detail = session_data[0]
+            session_detail = session_data['sessions'][0]
             session_id = session_detail['sessionId']
             detail = self.get('https://api.viocare.com/'+\
                                 '%s/sessions/%s/detail' %
@@ -231,6 +230,12 @@ class VioscreenHandler(object):
             self.insert_eatingpatterns(eatingpatterns)
             self.insert_foodconsumption(foodconsumption)
             self.insert_dietaryscore(dietaryscore)
+
+        if failures:
+            print('%s user_ids were not valid in the input. '+\
+                  'Check the output to identify the failures.' % len(failures))
+
+        return failures
 
     # DB access functions
     def get_init_surveys(self):
