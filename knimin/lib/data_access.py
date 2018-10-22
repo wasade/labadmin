@@ -25,7 +25,7 @@ from tornado.escape import xhtml_escape
 from constants import (md_lookup, month_int_lookup, month_str_lookup,
                        regions_by_state, blanks_values, season_lookup,
                        ebi_remove, env_lookup)
-from geocoder import geocode, Location, GoogleAPILimitExceeded
+from geocoder import geocode, Location
 from string_converter import converter
 
 
@@ -2041,9 +2041,6 @@ class KniminAccess(object):
                 # empty string to indicate geocode was successful
                 sql_args.append([info.lat, info.long, info.elev,
                                  '', ag_login_id])
-            except GoogleAPILimitExceeded:
-                # limit exceeded so no use trying to keep geocoding
-                break
             except:
                 # Catch ANY other error and set to could not geocode
                 sql_args.append([None, None, None, 'y', ag_login_id])
