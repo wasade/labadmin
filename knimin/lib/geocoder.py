@@ -1,7 +1,5 @@
 from collections import namedtuple
-from json import loads
 import requests
-from time import sleep
 from geopy.geocoders import Nominatim
 
 

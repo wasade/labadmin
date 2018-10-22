@@ -1,5 +1,4 @@
 from unittest import TestCase, main
-from json import loads
 from knimin.lib.geocoder import Location, geocode
 import random
 import string
@@ -24,7 +23,7 @@ class TestGeocode(TestCase):
         obs = geocode('Erlangengatan 12, Sweden')
         exp = Location('Erlangengatan 12, Sweden', 59.36121550000001,
                        16.4908829, 38.21769714355469, 'Eskilstuna',
-                       u'S\xf6dermanlands County', '63227', 'Sweden')
+                       u'S\xf6dermanland County', '63227', 'Sweden')
         self.assertAlmostEqual(obs.lat, exp.lat, delta=0.1)
         self.assertAlmostEqual(obs.long, exp.long, delta=0.1)
         self.assertEqual(obs.city, exp.city)
