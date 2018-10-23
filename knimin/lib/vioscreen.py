@@ -1,7 +1,7 @@
 import requests
 import os
-import json
 import pandas as pd
+import json
 
 from datetime import datetime
 from functools import partial
@@ -13,11 +13,9 @@ class VioscreenHandler(object):
        RESTful API and store data in AG database.
     """
     def __init__(self):
-        with open('.auth.json') as f:
-            data = json.load(f)
-            self._key = data['key']
-            self._user = data['user']
-            self._pw = data['pw']
+        self._key = config.vioscreen_regcode
+        self._user = config.vioscreen_user
+        self._pw = config.vioscreen_password
 
         self._session = requests.Session()
         # define partial functions for get and post
@@ -51,7 +49,7 @@ class VioscreenHandler(object):
         if 'token' not in response:
             raise ValueError('Token request not successful')
         return response['token']
-    
+
     def get_users(self):
         """Gets list of users that vioscreen has data for
 
@@ -79,7 +77,7 @@ class VioscreenHandler(object):
             each time a retrieval fails
         **kwargs
             Optional arguments that requests takes
-        
+
         Return
         ------
         dict
@@ -122,7 +120,7 @@ class VioscreenHandler(object):
         return dat
 
     def get_session_data(self, session_id, endpoint):
-        """Pulls data from the vioscreen API based on 
+        """Pulls data from the vioscreen API based on
         a specific session ID and session type(ex. 'foodcomponents')
 
         Parameters
@@ -244,7 +242,7 @@ class VioscreenHandler(object):
         Returns
         -------
         dict
-           Initial set of survey IDs and their corresponding statuses 
+           Initial set of survey IDs and their corresponding statuses
         """
         sql = """SELECT survey_id, status from ag.vioscreen_surveys"""
         data = self.sql_handler.execute_fetchall(sql)
@@ -280,7 +278,7 @@ class VioscreenHandler(object):
         Parameters
         ----------
         survey_id: str
-            Survey ID being inserted into vioscreen survey database    
+            Survey ID being inserted into vioscreen survey database
         status: str
             Status that the survey ID is being inserted with
         """
@@ -435,7 +433,7 @@ class VioscreenHandler(object):
         # convert large data dict to json for data storage
         for row in foodconsumption:
             row['data'] = json.dumps(row['data'])
-        return self._call_sql_handler(sql, foodconsumption) 
+        return self._call_sql_handler(sql, foodconsumption)
 
     def insert_dietaryscore(self, dietaryscore):
         """Inserts dietaryscore data into AG database
@@ -450,9 +448,9 @@ class VioscreenHandler(object):
         int
             The number of rows added to the database
         """
-        sql = """INSERT INTO ag.vioscreen_dietaryscore 
-                    (lowerLimit, name, score, survey_id, 
-                     type, upperLimit) 
+        sql = """INSERT INTO ag.vioscreen_dietaryscore
+                    (lowerLimit, name, score, survey_id,
+                     type, upperLimit)
                  VALUES (%s, %s, %s, %s, %s, %s)"""
         return self._call_sql_handler(sql, dietaryscore)
 

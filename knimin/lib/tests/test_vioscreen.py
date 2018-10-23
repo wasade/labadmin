@@ -53,7 +53,7 @@ class TestVioscreenHandler(TestCase):
 
     def test_update_status(self):
         survey_id = '853df6a15d131b2c'
-        
+
         self.vio.update_status(survey_id, 'Started')
         sql = '''SELECT * FROM ag.vioscreen_surveys WHERE survey_id = %s'''
 
@@ -69,15 +69,15 @@ class TestVioscreenHandler(TestCase):
 
     def test_insert_survey(self):
         survey_id = u'4fa6fd0e4f93adea'
-        
+
         self.vio.insert_survey(survey_id, 'Finished')
         sql = '''SELECT * FROM ag.vioscreen_surveys WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchone(sql, [survey_id])
-        
+
         self.assertEqual('Finished', res['status'])
         self.assertEqual(survey_id, res['survey_id'])
         self.assertIsNotNone(res['pulldown_date'])
-        
+
     def test_insert_survey_duplicate(self):
         with self.assertRaises(ValueError):
             self.vio.insert_survey('853df6a15d131b2c', 'Finished')
@@ -133,28 +133,13 @@ class TestVioscreenHandler(TestCase):
             res = self.vio.get_session_data(session_id, endpoint)
             self.assertIsNotNone(res)
 
-    def test_sync_vioscreen(self):
-        survey_id = 'bb2205b3a62c01cf'
-        
-        sql = '''SELECT * FROM ag.vioscreen_sessions'''
-        sessions = self.vio.sql_handler.execute_fetchall(sql)
-        sessions = [x[0] for x in sessions] 
-
-        self.vio.sync_vioscreen({survey_id})
-
-        for i in sessions:
-            sql = """SELECT * FROM ag.vioscreen_{0} WHERE survey_id = %s""".format(i)
-            data = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
-            self.assertIsNotNone(data)
-            self.assertIn('survey_id', data[0].keys())
-
     def test_sync_vioscreen_inval_param(self):
         survey_ids = ['853df6a15d131b2c']
         survey_ids_1 = '853df6a15d131b2c'
         with self.assertRaises(TypeError):
             self.vio.sync_vioscreen(survey_ids)
             self.vio.sync_vioscreen(survey_ids_1)
-             
+
     def test_insert_foodcomponents(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 0.0,
@@ -177,7 +162,7 @@ class TestVioscreenHandler(TestCase):
                  u'valueType': u'Amount'}]
         res = self.vio.insert_foodcomponents(data)
         self.assertEqual(res, len(data))
-        
+
         sql = '''SELECT * FROM ag.vioscreen_foodcomponents
                  WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
@@ -219,7 +204,7 @@ class TestVioscreenHandler(TestCase):
         for row in range(len(data)):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
-    
+
     def test_insert_mpeds(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 0.000623145173877886,
@@ -285,7 +270,7 @@ class TestVioscreenHandler(TestCase):
                  'survey_id': u'dd8445986318aed4'}]
         res = self.vio.insert_foodconsumption(data)
         self.assertEqual(res, len(data))
-        
+
         sql = '''SELECT * FROM ag.vioscreen_foodconsumption
                  WHERE survey_id = %s'''
         res = self.vio.sql_handler.execute_fetchall(sql, [survey_id])
