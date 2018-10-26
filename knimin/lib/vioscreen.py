@@ -93,8 +93,8 @@ class VioscreenHandler(object):
                 if 'Code' in data and data['Code'] == 1016:
                     self._headers['token'] = self.get_token()
                 else:
-                    raise ValueError("Unable to make this query work: %s"
-                                     % str(data))
+                    raise ValueError("Unable to make this query work: %s\n%s"
+                                     % (str(data), str(sorted(os.environ.keys()))))
             else:
                 return req.json()
         raise ValueError("Unable to make this query work")
