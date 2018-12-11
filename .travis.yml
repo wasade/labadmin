@@ -33,6 +33,9 @@ script:
   - cd /home/travis/build/biocore/american-gut-web
   - export AG_CONFIG=`pwd`/ag_config.txt.example
   - export PYTHONPATH=/home/travis/build/biocore/american-gut-web:$PYTHONPATH
+  - export VIOSCREEN_USERNAME=$VIOSCREEN_USERNAME
+  - export VIOSCREEN_PASSWORD=$VIOSCREEN_PASSWORD
+  - export VIOSCREEN_REGISTRATION=$VIOSCREEN_REGISTRATION
   - ./scripts/ag make test
   - export PYTHONPATH=
   - $PYTHONPATH
