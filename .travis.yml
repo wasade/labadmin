@@ -27,6 +27,7 @@ install:
   - sudo service postgresql stop
   - mkdir /tmp/why
   - sudo sed -i 's#^\(data_directory\s*=\s*\).*$#\1/tmp/why/#' /etc/postgresql/9.5/main/postgresql.conf
+  - sudo pg_createcluster --datadir=/tmp/why 9.5 testdata
   - sudo service postgresql start
   - psql -c "show data_directory;"
   - travis_retry conda create --yes -n labadmin python=2.7 pip
