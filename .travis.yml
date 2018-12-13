@@ -24,6 +24,7 @@ before_install:
 - conda update --yes conda
 install:
   - df -h
+  - psql -c "show data_directory;"
   - travis_retry conda create --yes -n labadmin python=2.7 pip
   - source activate labadmin
   - pip install -U pip
