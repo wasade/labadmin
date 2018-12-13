@@ -24,6 +24,10 @@ before_install:
 - conda update --yes conda
 install:
   - df -h
+  - service postgresql stop
+  - mkdir /tmp/why
+  - sed -i 's#^\(data_directory\s*=\s*\).*$#\1/tmp/why/#' /etc/postgresql/9.5/main/postgresql.conf
+  - service postgresql start
   - psql -c "show data_directory;"
   - travis_retry conda create --yes -n labadmin python=2.7 pip
   - source activate labadmin
