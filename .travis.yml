@@ -6,7 +6,7 @@ sudo: false
 services:
 - redis-server
 addons:
-  postgresql: '9.3'
+  postgresql: '9.5'
   apt:
       packages:
           - ghostscript
@@ -23,6 +23,7 @@ before_install:
 - export PATH=/home/travis/miniconda3/bin:$PATH
 - conda update --yes conda
 install:
+  - df -h
   - travis_retry conda create --yes -n labadmin python=2.7 pip
   - source activate labadmin
   - pip install -U pip
@@ -36,6 +37,7 @@ script:
   - export VIOSCREEN_USERNAME=$VIOSCREEN_USERNAME
   - export VIOSCREEN_PASSWORD=$VIOSCREEN_PASSWORD
   - export VIOSCREEN_REGISTRATION=$VIOSCREEN_REGISTRATION
+  - df -h
   - ./scripts/ag make test
   - export PYTHONPATH=
   - $PYTHONPATH
