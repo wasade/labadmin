@@ -28,7 +28,7 @@ install:
   - mkdir /tmp/why
   - cat /etc/postgresql/9.5/main/postgresql.conf
   - sudo sed -i 's/^data_directory/#data_directory/' /etc/postgresql/9.5/main/postgresql.conf
-  - sudo echo "data_directory='/tmp/why/'" >> /etc/postgresql/9.5/main/postgresql.conf
+  - echo "data_directory='/tmp/why/'" | sudo tee --append /etc/postgresql/9.5/main/postgresql.conf
   - sudo pg_createcluster --datadir=/tmp/why 9.5 testdata
   - sudo service postgresql start
   - psql -c "show data_directory;"
