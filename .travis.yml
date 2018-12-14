@@ -31,6 +31,7 @@ install:
   - echo "data_directory='/tmp/why/'" | sudo tee --append /etc/postgresql/9.5/main/postgresql.conf
   - sudo pg_createcluster --datadir=/tmp/why 9.5 testdata
   - sudo service postgresql start
+  - sudo psql -U postgres -c "create database travis"
   - psql -c "show data_directory;"
   - travis_retry conda create --yes -n labadmin python=2.7 pip
   - source activate labadmin
