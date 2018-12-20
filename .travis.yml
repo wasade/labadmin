@@ -17,24 +17,13 @@ env:
         secure: "uru4Ga12MPDtRCizuNQXh8LMWJXpclf+unYV235/hEAiiEaubOy8AnHKIPHqV45FEqu0ASJaN2LxcxCydh1MLyn+ECjRE1ZzwUk8qZiEJkRPeNOEXJ4VaWO7Epd1+9j53883P0Xp/zjLfeY9FzR1Ews2iGmaw7lMujXnzJhWgaG6QO7D41oZVXYHMqBi6kV2MzxBReIDzEOAvc6lN+vS8WRKMmILaQFAtlK+vg99U/faOMYfHqH8LTYM7sJ5V8jgSI730PMN6CD7kGiWR3Vi8kc4sV/U8rS9TgpVmYN4RzBZ8OfxxOobXMmVmuD8Lrfu2pCa/c5O3EKVC8DzSb9etwjoDGQpC1lZ29pmJRtTb6QFZnwE8S2W3r7buk2/mRPsVPEyj2qqJEhEwYX7Zqg7rEF/tyKIBTqTOXPeznK8cV729gE7EJjFrhgPAhan6kJdpASY6meYOsIQ3WLS5j8888tX6XvzEAg1R3x2+tCgD+cUoc8UBGJWy2m4+KHorab5duYYv+UFZzh1MPc41Y0HYnUvmGYo1szQVNG+c1f7ECTe+p7TWsmhcUKIiTRqfWIfK4vjGLMczwfEhUOsBW1seL1wcJmjvEP8AxA3vdk5/5qVlH5DAUMH/xCNA7nxnjD7CkTiTRRgkJx6hx1uk8jwOvyU+WG9XPVDB2TZXj1fVcM="
 before_install:
 - redis-server --version
+- sudo mount -o remount,size=25% /var/ramfs  # postgres on travis uses ramfs
 - wget http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
 - chmod +x miniconda.sh
 - "./miniconda.sh -b"
 - export PATH=/home/travis/miniconda3/bin:$PATH
 - conda update --yes conda
 install:
-  - df -h
-  - sudo service postgresql stop
-  - mkdir /tmp/why
-  - sudo sed -i 's/^data_directory/#data_directory/' /etc/postgresql/9.5/main/postgresql.conf
-  - echo "data_directory='/tmp/why95/'" | sudo tee --append /etc/postgresql/9.5/main/postgresql.conf
-  - sudo sed -i 's/^data_directory/#data_directory/' /etc/postgresql/9.2/main/postgresql.conf
-  - echo "data_directory='/tmp/why92/'" | sudo tee --append /etc/postgresql/9.2/main/postgresql.conf
-  - sudo pg_createcluster --datadir=/tmp/why95 9.5 testdata
-  - sudo pg_createcluster --datadir=/tmp/why92 9.2 testdata
-  - sudo service postgresql start
-  - sudo psql -U postgres -c "create database travis"
-  - sudo psql -U postgres -c "show data_directory;"
   - travis_retry conda create --yes -n labadmin python=2.7 pip
   - source activate labadmin
   - pip install -U pip
@@ -48,10 +37,8 @@ script:
   - export VIOSCREEN_USERNAME=$VIOSCREEN_USERNAME
   - export VIOSCREEN_PASSWORD=$VIOSCREEN_PASSWORD
   - export VIOSCREEN_REGISTRATION=$VIOSCREEN_REGISTRATION
-  - df -h
   - ./scripts/ag make test
-  - export PYTHONPATH=
-  - $PYTHONPATH
+  - # export PYTHONPATH=$PYTHONPATH
   - cd $TRAVIS_BUILD_DIR
   - cp $TRAVIS_BUILD_DIR/knimin/config.txt.example $TRAVIS_BUILD_DIR/knimin/config.txt
   - nosetests --verbose --with-doctest --with-coverage --cover-package=knimin
