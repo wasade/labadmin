@@ -5,15 +5,12 @@ from knimin.lib.vioscreen import VioscreenHandler
 
 
 class TestVioscreenHandler(TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.vio = VioscreenHandler()
-        cls.vio.sync_vioscreen({'853df6a15d131b2c'})
+    def setUp(self):
+        self.vio = VioscreenHandler()
+        self.vio.sync_vioscreen({'853df6a15d131b2c'})
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.vio.flush_vioscreen_db()
-        del cls.vio
+    def tearDown(self):
+        self.vio.flush_vioscreen_db()
 
     def test_get_token(self):
         token = self.vio.get_token()
@@ -176,24 +173,24 @@ class TestVioscreenHandler(TestCase):
 
     def test_insert_percentenergy(self):
         survey_id = u'dd8445986318aed4'
-        data =  [{u'amount': 29.3328087363491,
-                  u'code': u'%fat',
-                  u'description': u'Percent of calories from Fat',
-                  u'foodComponentType': 1,
-                  u'foodDataDefinition': None,
-                  u'precision': 0,
-                  u'shortDescription': u'Fat',
-                  'survey_id': u'dd8445986318aed4',
-                  u'units': u'%'},
-                 {u'amount': 15.7438637903384,
-                  u'code': u'%protein',
-                  u'description': u'Percent of calories from Protein',
-                  u'foodComponentType': 1,
-                  u'foodDataDefinition': None,
-                  u'precision': 0,
-                  u'shortDescription': u'Protein',
-                  'survey_id': u'dd8445986318aed4',
-                  u'units': u'%'}]
+        data = [{u'amount': 29.3328087363491,
+                 u'code': u'%fat',
+                 u'description': u'Percent of calories from Fat',
+                 u'foodComponentType': 1,
+                 u'foodDataDefinition': None,
+                 u'precision': 0,
+                 u'shortDescription': u'Fat',
+                 'survey_id': u'dd8445986318aed4',
+                 u'units': u'%'},
+                {u'amount': 15.7438637903384,
+                 u'code': u'%protein',
+                 u'description': u'Percent of calories from Protein',
+                 u'foodComponentType': 1,
+                 u'foodDataDefinition': None,
+                 u'precision': 0,
+                 u'shortDescription': u'Protein',
+                 'survey_id': u'dd8445986318aed4',
+                 u'units': u'%'}]
         res = self.vio.insert_percentenergy(data)
         self.assertEqual(res, len(data))
 
@@ -260,13 +257,18 @@ class TestVioscreenHandler(TestCase):
         data = [{u'amount': 1.0,
                  u'consumptionAdjustment': 1.0,
                  u'created': u'2017-07-29T06:55:57.537',
-                 u'data': [{"units": "mg", "amount": 0.0, "code": "acesupot", "description": "Acesulfame Potassium", "valueType": "Amount"}],
-                 u'description': u'All other cheese, such as American, cheddar or cream cheese, including cheese used in cooking',
+                 u'data': [{"units": "mg", "amount": 0.0, "code": "acesupot",
+                            "description": "Acesulfame Potassium",
+                            "valueType": "Amount"}],
+                 u'description': (u'All other cheese, such as American, '
+                                  'cheddar or cream cheese, including '
+                                  'cheese used in cooking'),
                  u'foodCode': u'70005',
                  u'foodGroup': u'Cheese and Dairy Products',
                  u'frequency': 52,
                  u'servingFrequencyText': u'1 per week',
-                 u'servingSizeText': u'1 slice (1 oz), 1/4 cup shredded, 2 tablespoons cream cheese',
+                 u'servingSizeText': (u'1 slice (1 oz), 1/4 cup shredded, '
+                                      '2 tablespoons cream cheese'),
                  'survey_id': u'dd8445986318aed4'}]
         res = self.vio.insert_foodconsumption(data)
         self.assertEqual(res, len(data))
@@ -304,6 +306,7 @@ class TestVioscreenHandler(TestCase):
         for row in range(len(data)):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
+
 
 if __name__ == "__main__":
     main()

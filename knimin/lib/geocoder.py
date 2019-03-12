@@ -49,7 +49,7 @@ def geocode(address):
 
     lat = location.latitude
     lng = location.longitude
-    #elev = elevation(lat, lng)
+    # elev = elevation(lat, lng)
     elev = None
 
     return Location(address, lat, lng, elev, city, state, postcode, country)

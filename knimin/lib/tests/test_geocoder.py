@@ -13,7 +13,7 @@ class TestGeocode(TestCase):
         self.assertEqual(obs.input, exp.input)
         self.assertAlmostEqual(obs.lat, exp.lat, delta=0.1)
         self.assertAlmostEqual(obs.long, exp.long, delta=0.1)
-        self.assertIsInstance(obs.elev, int)
+        # self.assertIsInstance(obs.elev, int)
         self.assertEqual(obs.city, exp.city)
         self.assertEqual(obs.state, exp.state)
         self.assertEqual(obs.postcode, exp.postcode)

@@ -100,4 +100,5 @@ class KniminConfig(object):
                                                 config.get('vioscreen',
                                                            'registration'))
 
+
 config = KniminConfig()

@@ -120,7 +120,7 @@ class SQLHandler(object):
                 self._connection.rollback()
                 try:
                     err_sql = cur.mogrify(sql, sql_args)
-                except:
+                except:  # noqa
                     err_sql = cur.mogrify(sql, sql_args[0])
                 # errors might contain user strings encoded in utf-8.
                 raise ValueError(("\nError running SQL query: %s"
@@ -2042,7 +2042,7 @@ class KniminAccess(object):
                 # empty string to indicate geocode was successful
                 sql_args.append([info.lat, info.long, info.elev,
                                  '', ag_login_id])
-            except:
+            except:  # noqa
                 # Catch ANY other error and set to could not geocode
                 sql_args.append([None, None, None, 'y', ag_login_id])
 
@@ -2678,5 +2678,5 @@ class KniminAccess(object):
         sql = """DELETE FROM barcodes.project WHERE project=%s"""
         try:
             self._con.execute(sql, [project_name])
-        except:
+        except:  # noqa
             raise ValueError("Unable to delete project %s" % project_name)

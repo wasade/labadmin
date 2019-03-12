@@ -93,7 +93,8 @@ class VioscreenHandler(object):
                     self._headers['token'] = self.get_token()
                 else:
                     raise ValueError("Unable to make this query work: %s\n%s"
-                                     % (str(data), str(sorted(os.environ.keys()))))
+                                     % (str(data),
+                                        str(sorted(os.environ.keys()))))
             else:
                 return req.json()
         raise ValueError("Unable to make this query work")
@@ -158,10 +159,6 @@ class VioscreenHandler(object):
             user_ids = all_vio_user_ids & user_ids
         else:
             user_ids = all_vio_user_ids
-
-        # I don't understand this, but "JDebelius" does not exist.
-        # must have been a test account since it's not an AG survey id
-        ignore = {"JDebelius", }
 
         # takes all survey IDs from vio_screen survey info and filters
         # only ones that do not have their data in the ag database
