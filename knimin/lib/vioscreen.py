@@ -1,6 +1,5 @@
 import requests
 import os
-import pandas as pd
 import json
 
 from datetime import datetime
@@ -8,9 +7,11 @@ from functools import partial
 from knimin import config
 from knimin.lib.data_access import SQLHandler
 
+
 class VioscreenHandler(object):
-    """VioScreen handler object. Used to pull data from VioScreen
-       RESTful API and store data in AG database.
+    """VioScreen handler object.
+
+    Used to pull data from VioScreen RESTful API and store data in AG database.
     """
     def __init__(self):
         self._key = config.vioscreen_regcode
@@ -27,8 +28,6 @@ class VioscreenHandler(object):
         self._users = self.get_users()
         self.sql_handler = SQLHandler(config)
 
-
-    # get an API token
     def get_token(self):
         """Gets an API token for vioscreen
 
@@ -42,8 +41,8 @@ class VioscreenHandler(object):
         ValueError
             If the post returned None
         """
-        response = self.post('https://api.viocare.com/%s/auth/login'\
-                                    % self._key,
+        url = 'https://api.viocare.com/%s/auth/login' % self._key
+        response = self.post(url,
                              data={"username": self._user,
                                    "password": self._pw})
         if 'token' not in response:
@@ -136,9 +135,10 @@ class VioscreenHandler(object):
         dict:
             Food frequency questionnaire data
         """
-        return self.get('https://api.viocare.com/%s/sessions/%s/%s' %
-                            (self._key, session_id, endpoint),
-                        headers=self._headers)
+        url = 'https://api.viocare.com/%s/sessions/%s/%s' % (self._key,
+                                                             session_id,
+                                                             endpoint)
+        return self.get(url, headers=self._headers)
 
     def sync_vioscreen(self, user_ids=None):
         """Pulls data from the vioscreen API and stores
@@ -152,16 +152,16 @@ class VioscreenHandler(object):
         """
         all_vio_user_ids = {x['username'] for x in self._users['users']}
         failures = []
-        if user_ids:
-            if not isinstance(user_ids, set):
-                raise TypeError('user_ids should be type set')
-            # Will only keep user ids that can be pulled from vioscreen
-            for user_id in user_ids:
-                if user_id not in all_vio_user_ids:
-                    failures.append(user_ids)
-                    user_ids.remove(user_id)
+        if user_ids is not None:
+            without_ffq = user_ids - all_vio_user_ids
+            failures = list(without_ffq)
+            user_ids = all_vio_user_ids & user_ids
         else:
             user_ids = all_vio_user_ids
+
+        # I don't understand this, but "JDebelius" does not exist.
+        # must have been a test account since it's not an AG survey id
+        ignore = {"JDebelius", }
 
         # takes all survey IDs from vio_screen survey info and filters
         # only ones that do not have their data in the ag database
@@ -171,22 +171,15 @@ class VioscreenHandler(object):
         survey_ids = self.get_init_surveys()
 
         for username in ids_to_sync:
-            try:
-                session_data = self.get('https://api.viocare.com/'+\
-                                            '%s/users/%s/sessions' %
-                                            (self._key, username),
-                                        headers=self._headers)
-            except ValueError:
-                # I don't understand this, but "JDebelius" does not exist.
-                # must have been a test account since it's not an AG survey id
-                continue
-
+            url = 'https://api.viocare.com/%s/users/%s/sessions' % (self._key,
+                                                                    username)
+            session_data = self.get(url, headers=self._headers)
             session_detail = session_data['sessions'][0]
-            session_id = session_detail['sessionId']
-            detail = self.get('https://api.viocare.com/'+\
-                                '%s/sessions/%s/detail' %
-                                (self._key, session_id),
-                              headers=self._headers)
+            sessionid = session_detail['sessionId']
+
+            url = 'https://api.viocare.com/%s/sessions/%s/detail' % (self._key,
+                                                                     sessionid)
+            detail = self.get(url, headers=self._headers)
 
             # Adds new survey information to database
             if username not in survey_ids:
@@ -202,20 +195,29 @@ class VioscreenHandler(object):
                 continue
 
             try:
-                foodcomponents = self.get_session_data(session_id,\
-                    'foodcomponents')['data']
-                percentenergy = self.get_session_data(session_id,\
-                    'percentenergy')['calculations']
-                mpeds = self.get_session_data(session_id, 'mpeds')['data']
-                eatingpatterns = self.get_session_data(session_id,\
-                    'eatingpatterns')['data']
-                foodconsumption = self.get_session_data(session_id,\
-                    'foodconsumption')['foodConsumption']
-                dietaryscore = self.get_session_data(session_id,\
-                    'dietaryscore')['dietaryScore']['scores']
+                foodcomponents = self.get_session_data(sessionid,
+                                                       'foodcomponents')
+                percentenergy = self.get_session_data(sessionid,
+                                                      'percentenergy')
+                mpeds = self.get_session_data(sessionid,
+                                              'mpeds')
+                eatingpatterns = self.get_session_data(sessionid,
+                                                       'eatingpatterns')
+                foodconsumption = self.get_session_data(sessionid,
+                                                        'foodconsumption')
+                dietaryscore = self.get_session_data(sessionid,
+                                                     'dietaryscore')
             except ValueError:
                 # sometimes there is a status Finished w/o data...
                 continue
+
+            dietaryscore = dietaryscore['dietaryScore']['scores']
+            foodconsumption = foodconsumption['foodConsumption']
+            mpeds = mpeds['data']
+            eatingpatterns = eatingpatterns['data']
+            percentenergy = percentenergy['calculations']
+            foodcomponents = foodcomponents['data']
+
             foodcomponents = self.tidyfy(username, foodcomponents)
             percentenergy = self.tidyfy(username, percentenergy)
             mpeds = self.tidyfy(username, mpeds)
@@ -229,10 +231,6 @@ class VioscreenHandler(object):
             self.insert_eatingpatterns(eatingpatterns)
             self.insert_foodconsumption(foodconsumption)
             self.insert_dietaryscore(dietaryscore)
-
-        if failures:
-            print('%s user_ids were not valid in the input. '+\
-                  'Check the output to identify the failures.' % len(failures))
 
         return failures
 
