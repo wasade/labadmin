@@ -4,18 +4,23 @@ import json
 from knimin.lib.vioscreen import VioscreenHandler
 
 
+skip = config.vioscreen_regcode == 'test'
+
 class TestVioscreenHandler(TestCase):
     def setUp(self):
         self.vio = VioscreenHandler()
         self.vio.sync_vioscreen({'853df6a15d131b2c'})
 
+    @skipIf(skip)
     def tearDown(self):
         self.vio.flush_vioscreen_db()
 
+    @skipIf(skip)
     def test_get_token(self):
         token = self.vio.get_token()
         self.assertIsNotNone(token)
 
+    @skipIf(skip)
     def test_get_users(self):
         users = self.vio.get_users()
         self.assertIsNotNone(users)
@@ -42,12 +47,14 @@ class TestVioscreenHandler(TestCase):
         for i in res:
             self.assertIn(i, exp)
 
+    @skipIf(skip)
     def test_get_init_surveys(self):
         res = self.vio.get_init_surveys()
         exp = '853df6a15d131b2c'
         self.assertIn(exp, res.keys())
         self.assertEqual('Finished', res[exp])
 
+    @skipIf(skip)
     def test_update_status(self):
         survey_id = '853df6a15d131b2c'
 
@@ -64,6 +71,7 @@ class TestVioscreenHandler(TestCase):
         self.assertEqual(survey_id, res['survey_id'])
         self.assertIsNotNone(res['pulldown_date'])
 
+    @skipIf(skip)
     def test_insert_survey(self):
         survey_id = u'4fa6fd0e4f93adea'
 
@@ -75,10 +83,12 @@ class TestVioscreenHandler(TestCase):
         self.assertEqual(survey_id, res['survey_id'])
         self.assertIsNotNone(res['pulldown_date'])
 
+    @skipIf(skip)
     def test_insert_survey_duplicate(self):
         with self.assertRaises(ValueError):
             self.vio.insert_survey('853df6a15d131b2c', 'Finished')
 
+    @skipIf(skip)
     def test_get_vio_survey_ids_not_in_ag(self):
         survey_ids = {'853df6a15d131b2c', '63df0f4276b84b14'}
         res = self.vio.get_vio_survey_ids_not_in_ag(survey_ids)
@@ -86,6 +96,7 @@ class TestVioscreenHandler(TestCase):
         self.assertNotIn('853df6a15d131b2c', res)
         self.assertIn('63df0f4276b84b14', res)
 
+    @skipIf(skip)
     def test_tidyfy(self):
         username = 'testuser'
         data = [{'amount': 10,
@@ -108,6 +119,7 @@ class TestVioscreenHandler(TestCase):
             del row['survey_id']
         self.assertEqual(data, tidy_data)
 
+    @skipIf(skip)
     def test_get_session_data_foodcomponents(self):
         session_id = u'000ada854d4f45f5abda90ccade7f0a8'
         endpoint = 'foodcomponents'
@@ -118,6 +130,7 @@ class TestVioscreenHandler(TestCase):
         self.assertEqual(foodcomponents['sessionId'], session_id)
         self.assertIsNotNone(foodcomponents['data'])
 
+    @skipIf(skip)
     def test_get_session_data(self):
         session_id = u'000ada854d4f45f5abda90ccade7f0a8'
         endpoints = ['foodcomponents',
@@ -130,6 +143,7 @@ class TestVioscreenHandler(TestCase):
             res = self.vio.get_session_data(session_id, endpoint)
             self.assertIsNotNone(res)
 
+    @skipIf(skip)
     def test_sync_vioscreen_inval_param(self):
         survey_ids = ['853df6a15d131b2c']
         survey_ids_1 = '853df6a15d131b2c'
@@ -137,6 +151,7 @@ class TestVioscreenHandler(TestCase):
             self.vio.sync_vioscreen(survey_ids)
             self.vio.sync_vioscreen(survey_ids_1)
 
+    @skipIf(skip)
     def test_insert_foodcomponents(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 0.0,
@@ -171,6 +186,7 @@ class TestVioscreenHandler(TestCase):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
 
+    @skipIf(skip)
     def test_insert_percentenergy(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 29.3328087363491,
@@ -202,6 +218,7 @@ class TestVioscreenHandler(TestCase):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
 
+    @skipIf(skip)
     def test_insert_mpeds(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 0.000623145173877886,
@@ -227,6 +244,7 @@ class TestVioscreenHandler(TestCase):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
 
+    @skipIf(skip)
     def test_insert_eatingpatterns(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 4.85534558425067,
@@ -252,6 +270,7 @@ class TestVioscreenHandler(TestCase):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
 
+    @skipIf(skip)
     def test_insert_foodconsumption(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'amount': 1.0,
@@ -282,6 +301,7 @@ class TestVioscreenHandler(TestCase):
             for key in data[row].keys():
                 self.assertEqual(res[row][key.lower()], data[row][key])
 
+    @skipIf(skip)
     def test_insert_dietaryscore(self):
         survey_id = u'dd8445986318aed4'
         data = [{u'lowerLimit': 0.0,
