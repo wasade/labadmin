@@ -33,7 +33,7 @@ script:
 - cd /home/travis/build/biocore/american-gut-web
 - export AG_CONFIG=`pwd`/ag_config.txt.example
 - export PYTHONPATH=/home/travis/build/biocore/american-gut-web:$PYTHONPATH
-- set | grep -i vioscreen_reg
+- set | grep -i testing
 - "./scripts/ag make test"
 - 
 - cd $TRAVIS_BUILD_DIR
