@@ -151,9 +151,11 @@ class TestAGEditBarcodeHandler(TestHandlerBase):
         sourcenames = [x[0] for x in sourcenames]
         # changing source for the barcode
         old_sourcename = payload['participant_name']
+        print(old_sourcename)
         new_sourcename = list(set(sourcenames) -
                               set(old_sourcename))[0]
         payload['participant_name'] = new_sourcename
+        print(new_sourcename)
 
         response = self.post('/ag_edit_barcode/', payload)
         obs_details = db.getAGBarcodeDetails(barcode)
@@ -164,6 +166,8 @@ class TestAGEditBarcodeHandler(TestHandlerBase):
 
         self.assertEqual(response.code, 200)
         self.assertEqual(obs_details['participant_name'], new_sourcename)
+        print(obs_details['participant_name'])
+        print(old_sourcename)
         self.assertTrue(obs_details['participant_name'] != old_sourcename)
 
     def test_edit_none_participant(self):
