@@ -1,7 +1,8 @@
-from unittest import TestCase, main
+from unittest import TestCase, main, skipIf
 import json
 
 from knimin.lib.vioscreen import VioscreenHandler
+from knimin import config
 
 
 skip = config.vioscreen_regcode == 'test'
