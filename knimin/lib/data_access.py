@@ -919,12 +919,12 @@ class KniminAccess(object):
                     19 < md[1][barcode]['AGE_YEARS'] < 70 and \
                     not md[1][barcode]['AGE_YEARS'] == 'Unspecified'
                 md[1][barcode]['SUBSET_DIABETES'] = \
-                    (md[1][barcode]['DIABETES'] == \
+                    (md[1][barcode]['DIABETES'] ==  # noqa
                         'I do not have this condition')
                 md[1][barcode]['SUBSET_IBD'] = \
                     md[1][barcode]['IBD'] == 'I do not have this condition'
                 md[1][barcode]['SUBSET_ANTIBIOTIC_HISTORY'] = \
-                    (md[1][barcode]['ANTIBIOTIC_HISTORY'] == \
+                    (md[1][barcode]['ANTIBIOTIC_HISTORY'] ==  # noqa
                      'I have not taken antibiotics in the past year.')
                 md[1][barcode]['SUBSET_BMI'] = \
                     18.5 <= md[1][barcode]['BMI'] < 30 and \
