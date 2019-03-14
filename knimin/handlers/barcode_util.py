@@ -217,11 +217,11 @@ class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
             barcode_details['obsolete'] = 'N'
         div_id = message = ""
         if (barcode_details['obsolete'] == "Y"):
-                # the barcode is obsolete
-                div_id = "obsolete"
-                # TODO: Stefan: why is that set here, as far as I see, this
-                # message will in all cases be overwritten!
-                message = "Barcode is Obsolete"
+            # the barcode is obsolete
+            div_id = "obsolete"
+            # TODO: Stefan: why is that set here, as far as I see, this
+            # message will in all cases be overwritten!
+            message = "Barcode is Obsolete"
         # get project info for div
         ag_details = []
         if parent_project == 'American Gut':

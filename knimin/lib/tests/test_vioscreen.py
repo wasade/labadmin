@@ -7,6 +7,7 @@ from knimin import config
 
 skip = config.vioscreen_regcode == 'test'
 
+
 class TestVioscreenHandler(TestCase):
     @skipIf(skip, "No credentials")
     def setUp(self):

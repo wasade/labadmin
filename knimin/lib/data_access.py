@@ -534,7 +534,7 @@ class KniminAccess(object):
         # Formats a question and response for a MULTIPLE question into a header
         def _translate_multiple_response_to_header(question, response):
             response = response.replace(" ", "_")
-            response = sub('\W', '', response)
+            response = sub(r'\W', '', response)
             header = '_'.join([question, response])
             return header.upper()
 
@@ -919,12 +919,12 @@ class KniminAccess(object):
                     19 < md[1][barcode]['AGE_YEARS'] < 70 and \
                     not md[1][barcode]['AGE_YEARS'] == 'Unspecified'
                 md[1][barcode]['SUBSET_DIABETES'] = \
-                    (md[1][barcode]['DIABETES'] ==
+                    (md[1][barcode]['DIABETES'] == \
                         'I do not have this condition')
                 md[1][barcode]['SUBSET_IBD'] = \
                     md[1][barcode]['IBD'] == 'I do not have this condition'
                 md[1][barcode]['SUBSET_ANTIBIOTIC_HISTORY'] = \
-                    (md[1][barcode]['ANTIBIOTIC_HISTORY'] ==
+                    (md[1][barcode]['ANTIBIOTIC_HISTORY'] == \
                      'I have not taken antibiotics in the past year.')
                 md[1][barcode]['SUBSET_BMI'] = \
                     18.5 <= md[1][barcode]['BMI'] < 30 and \
@@ -1521,8 +1521,8 @@ class KniminAccess(object):
         sql = "SELECT EXISTS(SELECT * FROM project WHERE project = %s)"
         exists = self._con.execute_fetchone(sql, [name])[0]
         if exists:
-                raise ValueError("Project %s already exists!" %
-                                 xhtml_escape(name))
+            raise ValueError("Project %s already exists!" %
+                             xhtml_escape(name))
 
         sql = """INSERT INTO project (project_id, project)
                  SELECT max(project_id)+1, %s FROM project"""
@@ -1980,8 +1980,7 @@ class KniminAccess(object):
         if not info.lat:
             cannot_geocode = True
         # Use startswith because UK zipcodes can be 2, 3, or 6 characters
-        elif (info.country != country or
-              help_pc_identity):
+        elif (info.country != country or help_pc_identity):
             # countries and zipcodes dont match, so blank out info
             info = Location(zipcode, None, None, None,
                             None, None, None, country)
