@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from tornado.web import authenticated
+from tornado.escape import json_encode, json_decode
 from knimin.handlers.base import BaseHandler
 from datetime import datetime
 
@@ -171,6 +172,21 @@ FAQ section for when you can expect results.<br/>
 
         return subject, body_message
 
+
+@set_access(['Scan Barcodes'])
+class PushQiitaHandler(BaseHandler):
+    @authenticated
+    def get(self):
+        barcodes = db.get_unsent_barcodes_from_qiita_buffer()
+        self.write(json_encode(barcodes))
+        self.finish()
+
+    @authenticated
+    def post(self):
+        barcodes = db.get_unsent_barcodes_from_qiita_buffer()
+        print("Sending: %s" % str(barcodes))
+        db.mark_barcodes_sent_to_qiita(barcodes)
+        self.finish()
 
 @set_access(['Scan Barcodes'])
 class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
