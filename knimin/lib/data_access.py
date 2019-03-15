@@ -1402,6 +1402,19 @@ class KniminAccess(object):
         else:
             return {}
 
+    def push_barcode_to_qiita_buffer(self, barcode):
+        """Adds barcode to the qiita buffer
+
+        Parameters
+        ----------
+        barcode : str
+            The identifier to stage
+        """
+        sql = """INSERT INTO project_qiita_buffer
+                             (barcode)
+                             VALUES (%s)"""
+        self._con.execute(sql, [barcode])
+
     def add_barcodes_to_kit(self, ag_kit_id, num_barcodes=1):
         """Attaches barcodes to an existing american gut kit
 

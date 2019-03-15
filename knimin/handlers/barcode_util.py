@@ -174,10 +174,6 @@ FAQ section for when you can expect results.<br/>
 
 @set_access(['Scan Barcodes'])
 class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
-    _barcode_buffer = set()
-
-    def _buffer_ag_barcode(self, barcode):
-        self._barcode_buffer.add(barcode)
 
     @authenticated
     def get(self):
@@ -298,12 +294,12 @@ class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
 
             new_proj, parent_project = db.getBarcodeProjType(barcode)
         if parent_project == 'American Gut':
-            self._buffer_ag_barcode(barcode)
+            db.push_barcode_to_qiita_buffer(barcode)
 
             email_msg, ag_update_msg = self.update_ag_barcode(
                 barcode, login_user, login_email, email_type, sent_date,
                 send_mail, sample_date, sample_time, other_text)
-        print(self._barcode_buffer)
+
         self.render("barcode_util.html", div_and_msg=None,
                     barcode_projects=[],
                     parent_project=None,
