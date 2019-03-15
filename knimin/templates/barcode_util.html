@@ -16,24 +16,48 @@
     });
   });
 
-function update_qiita_buffer() {
+function update_qiita_buffer(data, status) {
+    // update the buffer sending status and the buffer level
+    document.getElementById("qiita_buffer_status").innerHTML = "Send status: " + data['status'];
+    document.getElementById("qiita_buffer_level").innerHTML = "Samples queued: " + data['barcodes'].length;
+    console.log(status);
+}
+
+function onload_update_qiita_buffer() {
+    // on page load, issue an immediate update
     $.get("/notify-qiita/", function(data, status) {
-        console.log("GET /notify-qiita/");
-        var obj = JSON.parse(data);
-		document.getElementById("qiita_buffer_level").innerHTML = "Samples queued: " + obj.length;
-        console.log(obj);
-        console.log(status);
+        data = JSON.parse(data);
+        update_qiita_buffer(data, status);
 	} );
 }
+
 function submit_qiita_buffer() {
+    // issue a request to the knimin server to push data to qiita
     $.post("/notify-qiita/", function(data, status) {
         console.log("POST /notify-qiita/");
         console.log(data);
         console.log(status);
 	} );
-    update_qiita_buffer();
 }
-update_qiita_buffer();
+
+(function poll() {
+    // poll for buffer and submission status on a 5 second interval
+    setTimeout(function() {
+        $.ajax({
+            url: "/notify-qiita/",
+            type: "GET",
+            success: function(data, status) {
+                console.log("polling");
+                update_qiita_buffer(data, status);
+            },
+            dataType: "json",
+            complete: poll,
+            timeout: 5000
+        })
+    }, 5000);
+})();
+
+onload_update_qiita_buffer();
 
 </script>
 {% end %}
@@ -64,9 +88,9 @@ update_qiita_buffer();
 </form>
 </div>
 
-<div id="qiita_buffer_window" onload="update_qiita_buffer()">
-	<h3 id="qiita_buffer_level">Please refresh.</h3>
-	<button onClick="update_qiita_buffer()">Refresh</button>
+<div id="qiita_buffer_window">
+	<h3 id="qiita_buffer_level">Samples queued: refreshing...</h3>
+    <h3 id="qiita_buffer_status">Send status: refreshing...</h3>
 	<h3 class="qiita_buffer_warning_text">
 		Note: queued samples will be inaccessible to LabControl <br>
 	</h3>

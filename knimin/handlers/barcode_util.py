@@ -178,7 +178,8 @@ class PushQiitaHandler(BaseHandler):
     @authenticated
     def get(self):
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
-        self.write(json_encode(barcodes))
+        dat = {'status': "Idle", "barcodes": barcodes}
+        self.write(json_encode(dat))
         self.finish()
 
     @authenticated
