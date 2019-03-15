@@ -1413,14 +1413,14 @@ class KniminAccess(object):
         sql = """SELECT barcode
                  FROM project_qiita_buffer"""
         present = {i[0] for i in self._con.execute_fetchall(sql)}
+
         if barcode in present:
             return "Barcode in queue or already sent to Qiita"
+
         else:
-	    sql = """INSERT INTO project_qiita_buffer
-				 (barcode)
-			VALUES (%s)
-			"""
-	    self._con.execute(sql, [barcode])
+            sql = """INSERT INTO project_qiita_buffer (barcode)
+                     VALUES (%s)"""
+            self._con.execute(sql, [barcode])
             return "Barcode inserted"
 
     def get_send_qiita_buffer_status(self):

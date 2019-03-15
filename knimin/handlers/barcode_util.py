@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from tornado.web import authenticated
-from tornado.escape import json_encode, json_decode
+from tornado.escape import json_encode
 from knimin.handlers.base import BaseHandler
 from datetime import datetime
 
@@ -197,6 +197,7 @@ class PushQiitaHandler(BaseHandler):
             db.set_send_qiita_buffer_status("Idle")
 
         self.finish()
+
 
 @set_access(['Scan Barcodes'])
 class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
