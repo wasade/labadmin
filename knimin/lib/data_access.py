@@ -1423,6 +1423,18 @@ class KniminAccess(object):
 	    self._con.execute(sql, [barcode])
             return "Barcode inserted"
 
+    def get_send_qiita_buffer_status(self):
+        """Obtain the present status of the Qiita submission buffer"""
+        sql = """SELECT state FROM project_qiita_buffer_status"""
+        return self._con.execute_fetchone(sql)
+
+    def set_send_qiita_buffer_status(self, state):
+        """Obtain the present status of the Qiita submission buffer"""
+        sql = """UPDATE project_qiita_buffer_status
+                 SET state = %s
+                 WHERE id = 0"""
+        self._con.execute(sql, [state])
+
     def get_unsent_barcodes_from_qiita_buffer(self):
         """Extract the barcodes that have not been sent to Qiita"""
         sql = """SELECT barcode

@@ -23,8 +23,8 @@ function update_qiita_buffer(data, status) {
     console.log(status);
 }
 
-function onload_update_qiita_buffer() {
-    // on page load, issue an immediate update
+function immediate_update_qiita_buffer() {
+    // immediate update of buffer and status
     $.get("/notify-qiita/", function(data, status) {
         data = JSON.parse(data);
         update_qiita_buffer(data, status);
@@ -38,6 +38,7 @@ function submit_qiita_buffer() {
         console.log(data);
         console.log(status);
 	} );
+    immediate_update_qiita_buffer();
 }
 
 (function poll() {
@@ -57,7 +58,7 @@ function submit_qiita_buffer() {
     }, 5000);
 })();
 
-onload_update_qiita_buffer();
+immediate_update_qiita_buffer();
 
 </script>
 {% end %}

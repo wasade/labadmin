@@ -178,15 +178,24 @@ class PushQiitaHandler(BaseHandler):
     @authenticated
     def get(self):
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
-        dat = {'status': "Idle", "barcodes": barcodes}
+        status = db.get_send_qiita_buffer_status()
+        dat = {'status': status, "barcodes": barcodes}
         self.write(json_encode(dat))
         self.finish()
 
     @authenticated
     def post(self):
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
-        print("Sending: %s" % str(barcodes))
-        db.mark_barcodes_sent_to_qiita(barcodes)
+        db.set_send_qiita_buffer_status("Pushing...")
+
+        try:
+            print("Sending: %s" % str(barcodes))
+        except:
+            db.set_send_qiita_buffer_status("Failed!")
+        else:
+            db.mark_barcodes_sent_to_qiita(barcodes)
+            db.set_send_qiita_buffer_status("Idle")
+
         self.finish()
 
 @set_access(['Scan Barcodes'])
