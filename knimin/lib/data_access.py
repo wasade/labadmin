@@ -1426,7 +1426,7 @@ class KniminAccess(object):
     def get_send_qiita_buffer_status(self):
         """Obtain the present status of the Qiita submission buffer"""
         sql = """SELECT state FROM project_qiita_buffer_status"""
-        return self._con.execute_fetchone(sql)
+        return self._con.execute_fetchone(sql)[0]
 
     def set_send_qiita_buffer_status(self, state):
         """Obtain the present status of the Qiita submission buffer"""

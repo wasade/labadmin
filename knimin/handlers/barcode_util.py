@@ -15,16 +15,26 @@ from knimin.handlers.access_decorators import set_access
 from knimin.lib.configuration import config
 
 
-# interface for making HTTP requests against Qiita
-qclient = QiitaClient(':'.join([config.qiita_host, config.qiita_port]),
-                      config.qiita_client_id,
-                      config.qiita_client_secret,
-                      config.qiita_certificate)
+def get_qiita_client():
+    if config.debug:
+        class _mock:
+            def get(self, *args, **kwargs):
+                return {'categories': ['a', 'b', 'c']}
+            def http_patch(self, *args, **kwargs):
+                return 'okay'
+        qclient = _mock()
+    else:
+        # interface for making HTTP requests against Qiita
+        qclient = QiitaClient(':'.join([config.qiita_host, config.qiita_port]),
+                              config.qiita_client_id,
+                              config.qiita_client_secret,
+                              config.qiita_certificate)
 
-# we are monkeypatching to use qclient's internal machinery
-# and to fix the broken HTTP patch
-qclient.http_patch = functools.partial(qclient._request_retry,
-                                       requests.patch)
+        # we are monkeypatching to use qclient's internal machinery
+        # and to fix the broken HTTP patch
+        qclient.http_patch = functools.partial(qclient._request_retry,
+                                               requests.patch)
+    return qclient
 
 
 class BarcodeUtilHelper(object):
@@ -202,17 +212,18 @@ def align_with_qiita_categories(samples, categories):
 class PushQiitaHandler(BaseHandler):
     executor = concurrent.futures.ThreadPoolExecutor(5)
     study_id = config.qiita_study_id
+    qclient = get_qiita_client()
 
     @concurrent.run_on_executor
     def _push_to_qiita(self, study_id, samples):
-        categories = qclient.get('/api/v1/study/%s/samples/info' % study_id)
-        categories = categories['categories']
+        cats = self.qclient.get('/api/v1/study/%s/samples/info' % study_id)
+        cats = cats['categories']
 
-        samples = align_with_qiita_categories(samples, categories)
+        samples = align_with_qiita_categories(samples, cats)
         data = json_encode(samples)
 
-        return  qclient.http_patch('/api/v1/study/%s/samples' % study_id,
-                                   data=data)
+        return self.qclient.http_patch('/api/v1/study/%s/samples' % study_id,
+                                       data=data)
 
     @authenticated
     def get(self):
@@ -234,13 +245,10 @@ class PushQiitaHandler(BaseHandler):
         try:
             result = yield self._push_to_qiita(self.study_id, barcodes)
         except Exception, e:
-            print(e.message)
             db.set_send_qiita_buffer_status("Failed!")
         else:
             db.mark_barcodes_sent_to_qiita(barcodes)
             db.set_send_qiita_buffer_status("Idle")
-
-        self.finish()
 
 
 @set_access(['Scan Barcodes'])
