@@ -245,7 +245,7 @@ class PushQiitaHandler(BaseHandler):
         db.set_send_qiita_buffer_status("Pushing...")
 
         try:
-            result = yield self._push_to_qiita(self.study_id, barcodes)
+            yield self._push_to_qiita(self.study_id, barcodes)
         except:  # noqa
             db.set_send_qiita_buffer_status("Failed!")
         else:

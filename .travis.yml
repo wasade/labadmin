@@ -34,7 +34,6 @@ script:
 - 
 - cd $TRAVIS_BUILD_DIR
 - cp $TRAVIS_BUILD_DIR/knimin/config.txt.example $TRAVIS_BUILD_DIR/knimin/config.txt
-- cat $TRAVIS_BUILD_DIR/knimin/config.txt
 - nosetests --verbose --with-doctest --with-coverage --cover-package=knimin
 - flake8 --ignore E722 knimin setup.py scripts
 after_success:
