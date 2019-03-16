@@ -20,8 +20,10 @@ def get_qiita_client():
         class _mock:
             def get(self, *args, **kwargs):
                 return {'categories': ['a', 'b', 'c']}
+
             def http_patch(self, *args, **kwargs):
                 return 'okay'
+
         qclient = _mock()
     else:
         # interface for making HTTP requests against Qiita
@@ -244,7 +246,7 @@ class PushQiitaHandler(BaseHandler):
 
         try:
             result = yield self._push_to_qiita(self.study_id, barcodes)
-        except Exception, e:
+        except:  # noqa
             db.set_send_qiita_buffer_status("Failed!")
         else:
             db.mark_barcodes_sent_to_qiita(barcodes)

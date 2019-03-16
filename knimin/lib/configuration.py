@@ -109,4 +109,5 @@ class KniminConfig(object):
         self.qiita_certificate = config.get('qiita', 'QIITA_CERT')
         self.qiita_study_id = config.get('qiita', 'QIITA_STUDY_ID')
 
+
 config = KniminConfig()

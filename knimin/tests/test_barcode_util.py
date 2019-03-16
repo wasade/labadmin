@@ -11,6 +11,7 @@ from knimin import db
 from knimin.tests.tornado_test_base import TestHandlerBase
 from knimin.handlers.barcode_util import BarcodeUtilHelper
 
+
 class TestQiitaPush(TestHandlerBase):
     def setUp(self):
         db._con.execute('DELETE from barcodes.project_qiita_buffer')
