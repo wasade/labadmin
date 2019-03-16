@@ -44,7 +44,7 @@ class KniminConfig(object):
     def __init__(self, config_fp=None):
         if config_fp is None:
             config_fp = self.config_fp
-
+        print(config_fp)
         if not os.path.exists(config_fp):
             raise IOError('Config file %s missing!' % config_fp)
 
