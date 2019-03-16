@@ -1,13 +1,30 @@
 #!/usr/bin/env python
 from tornado.web import authenticated
 from tornado.escape import json_encode
+from tornado import gen, concurrent
 from knimin.handlers.base import BaseHandler
 from datetime import datetime
+import requests
+import functools
+from qiita_client import QiitaClient
 
 from knimin import db
 from knimin.lib.constants import survey_type
 from knimin.lib.mail import send_email
 from knimin.handlers.access_decorators import set_access
+from knimin.lib.configuration import config
+
+
+# interface for making HTTP requests against Qiita
+qclient = QiitaClient(':'.join([config.qiita_host, config.qiita_port]),
+                      config.qiita_client_id,
+                      config.qiita_client_secret,
+                      config.qiita_certificate)
+
+# we are monkeypatching to use qclient's internal machinery
+# and to fix the broken HTTP patch
+qclient.http_patch = functools.partial(qclient._request_retry,
+                                       requests.patch)
 
 
 class BarcodeUtilHelper(object):
@@ -173,8 +190,30 @@ FAQ section for when you can expect results.<br/>
         return subject, body_message
 
 
+def align_with_qiita_categories(samples, categories):
+    # obviously should instead align to the actual sample metadata...
+    aligned = {}
+    for s in samples:
+        aligned[s] = {c: 'LabControl test' for c in categories}
+    return aligned
+
+
 @set_access(['Scan Barcodes'])
 class PushQiitaHandler(BaseHandler):
+    executor = concurrent.futures.ThreadPoolExecutor(5)
+    study_id = config.qiita_study_id
+
+    @concurrent.run_on_executor
+    def _push_to_qiita(self, study_id, samples):
+        categories = qclient.get('/api/v1/study/%s/samples/info' % study_id)
+        categories = categories['categories']
+
+        samples = align_with_qiita_categories(samples, categories)
+        data = json_encode(samples)
+
+        return  qclient.http_patch('/api/v1/study/%s/samples' % study_id,
+                                   data=data)
+
     @authenticated
     def get(self):
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
@@ -184,13 +223,18 @@ class PushQiitaHandler(BaseHandler):
         self.finish()
 
     @authenticated
+    @gen.coroutine
     def post(self):
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
+        if not barcodes:
+            return
+
         db.set_send_qiita_buffer_status("Pushing...")
 
         try:
-            print("Sending: %s" % str(barcodes))
-        except:
+            result = yield self._push_to_qiita(self.study_id, barcodes)
+        except Exception, e:
+            print(e.message)
             db.set_send_qiita_buffer_status("Failed!")
         else:
             db.mark_barcodes_sent_to_qiita(barcodes)
