@@ -243,6 +243,11 @@ class PushQiitaHandler(BaseHandler):
         if not barcodes:
             return
 
+        # certainly not a perfect mutex, however tornado is single threaded
+        status = db.get_send_qiita_buffer_status()
+        if status in ['Failed!', 'Pushing...']:
+            return
+
         db.set_send_qiita_buffer_status("Pushing...")
 
         try:
