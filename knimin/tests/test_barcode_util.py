@@ -9,7 +9,7 @@ from tornado.escape import url_escape, xhtml_escape, json_decode
 
 from knimin import db
 from knimin.tests.tornado_test_base import TestHandlerBase
-from knimin.handlers.barcode_util import BarcodeUtilHelper
+from knimin.handlers.barcode_util import BarcodeUtilHelper, get_qiita_client
 
 
 class TestQiitaPush(TestHandlerBase):
@@ -17,6 +17,11 @@ class TestQiitaPush(TestHandlerBase):
         db._con.execute('DELETE from barcodes.project_qiita_buffer')
         db.set_send_qiita_buffer_status('Idle')
         super(TestQiitaPush, self).setUp()
+
+    def test_get_qiita_client(self):
+        obs = get_qiita_client()
+        self.assertTrue(hasattr(obs, 'get'))
+        self.assertTrue(hasattr(obs, 'http_patch'))
 
     def test_get_has_barcodes(self):
         self.mock_login()
