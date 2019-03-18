@@ -218,7 +218,6 @@ class PushQiitaHandler(BaseHandler):
 
     @concurrent.run_on_executor
     def _push_to_qiita(self, study_id, samples):
-        # TODO: add a mutex or block to ensure a single call process at a time
         cats = self.qclient.get('/api/v1/study/%s/samples/info' % study_id)
         cats = cats['categories']
 
