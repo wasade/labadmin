@@ -28,6 +28,15 @@ from constants import (md_lookup, month_int_lookup, month_str_lookup,
 from geocoder import geocode, Location
 from string_converter import converter
 
+import logging
+
+handler = logging.StreamHandler()
+fmt_str = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
+handler.setFormatter(logging.Formatter(fmt_str))
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
 
 class IncorrectEmailError(Exception):
     pass
@@ -1454,7 +1463,11 @@ class KniminAccess(object):
             sql = """UPDATE project_qiita_buffer
                      SET pushed_to_qiita = 'Y'
                      WHERE barcode IN %s"""
-            self._con.execute(sql, [tuple(barcodes)])
+            try:
+                self._con.execute(sql, [tuple(barcodes)])
+                logger.debug('AN EXCEPTION DID NOT OCCUR IN MARK')
+            except Exception as e:
+                logger.debug(e.pgcode)
 
     def add_barcodes_to_kit(self, ag_kit_id, num_barcodes=1):
         """Attaches barcodes to an existing american gut kit

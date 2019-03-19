@@ -290,9 +290,10 @@ class PushQiitaHandler(BaseHandler):
             db.set_send_qiita_buffer_status("Failed!")
         else:
             logger.debug('Push succeeded')
+            logger.debug('Marking barcodes sent to Qiita w/Y')
             db.mark_barcodes_sent_to_qiita(barcodes)
-            db.set_send_qiita_buffer_status("Idle")
             logger.debug('Changing buffer status to Idle')
+            db.set_send_qiita_buffer_status("Idle")
 
         logger.debug('Leaving(3) PushQiitaHandler.post()')
 
