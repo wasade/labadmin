@@ -14,6 +14,16 @@ from knimin.lib.mail import send_email
 from knimin.handlers.access_decorators import set_access
 from knimin.lib.configuration import config
 
+import logging
+
+#logging.basicConfig(filename='/tmp/bibfortuna.log', level=logging.DEBUG)
+handler = logging.StreamHandler()
+fmt_str = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
+handler.setFormatter(logging.Formatter(fmt_str))
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
 
 def get_qiita_client():
     if config.debug:
@@ -218,45 +228,73 @@ class PushQiitaHandler(BaseHandler):
 
     @concurrent.run_on_executor
     def _push_to_qiita(self, study_id, samples):
+        logger.debug('Entering PushQiitaHandler._push_to_qiita()')
         cats = self.qclient.get('/api/v1/study/%s/samples/info' % study_id)
+        logger.debug('Got categories from Qiita')
         cats = cats['categories']
+        logger.debug(cats)
 
+        logger.debug('Aligning Samples w/Qiita categories')
         samples = align_with_qiita_categories(samples, cats)
+        logger.debug(samples)
         data = json_encode(samples)
-
-        return self.qclient.http_patch('/api/v1/study/%s/samples' % study_id,
-                                       data=data)
+        logger.debug('PATCHing Qiita Database')
+        r = self.qclient.http_patch('/api/v1/study/%s/samples' % study_id, data=data)
+        logger.debug('PATCHing finished')
+        logger.debug('Leaving PushQiitaHandler._push_to_qiita()')
+        return r
 
     @authenticated
     def get(self):
+        logger.debug('Entering PushQiitaHandler.get()')
+        logger.debug('Getting unsent barcodes from buffer')
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
+        logger.debug(barcodes)
+        logger.debug('Getting buffer status')
         status = db.get_send_qiita_buffer_status()
         dat = {'status': status, "barcodes": barcodes}
+        logger.debug(dat)
         self.write(json_encode(dat))
+        logger.debug('GET request serviced')
         self.finish()
+        logger.debug('Leaving PushQiitaHandler.get()')
 
     @authenticated
     @gen.coroutine
     def post(self):
+        logger.debug('Entering PushQiitaHandler.post()')
+        logger.debug('Getting unsent barcodes from buffer')
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
+        logger.debug(barcodes)
         if not barcodes:
+            logger.debug('No barcodes were present in the buffer')
+            logger.debug('Leaving(1) PushQiitaHandler.post()')
             return
 
         # certainly not a perfect mutex, however tornado is single threaded
+        logger.debug('Getting buffer status')
         status = db.get_send_qiita_buffer_status()
         if status in ['Failed!', 'Pushing...']:
+            logger.debug(status)
+            logger.debug('Leaving(2) PushQiitaHandler.post()')
             return
 
+        logger.debug('Setting buffer status')
         db.set_send_qiita_buffer_status("Pushing...")
 
         try:
+            logger.debug('Pushing to Qiita')
             yield self._push_to_qiita(self.study_id, barcodes)
         except:  # noqa
+            logger.debug('Push failed')
             db.set_send_qiita_buffer_status("Failed!")
         else:
+            logger.debug('Push succeeded')
             db.mark_barcodes_sent_to_qiita(barcodes)
             db.set_send_qiita_buffer_status("Idle")
+            logger.debug('Changing buffer status to Idle')
 
+        logger.debug('Leaving(3) PushQiitaHandler.post()')
 
 @set_access(['Scan Barcodes'])
 class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
