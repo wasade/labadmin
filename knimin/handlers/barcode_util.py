@@ -16,7 +16,6 @@ from knimin.lib.configuration import config
 
 import logging
 
-#logging.basicConfig(filename='/tmp/bibfortuna.log', level=logging.DEBUG)
 handler = logging.StreamHandler()
 fmt_str = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
 handler.setFormatter(logging.Formatter(fmt_str))
