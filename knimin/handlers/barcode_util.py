@@ -238,7 +238,8 @@ class PushQiitaHandler(BaseHandler):
         logger.debug(samples)
         data = json_encode(samples)
         logger.debug('PATCHing Qiita Database')
-        r = self.qclient.http_patch('/api/v1/study/%s/samples' % study_id, data=data)
+        r = self.qclient.http_patch('/api/v1/study/%s/samples' % study_id,
+                                    data=data)
         logger.debug('PATCHing finished')
         logger.debug('Leaving PushQiitaHandler._push_to_qiita()')
         return r
@@ -294,6 +295,7 @@ class PushQiitaHandler(BaseHandler):
             logger.debug('Changing buffer status to Idle')
 
         logger.debug('Leaving(3) PushQiitaHandler.post()')
+
 
 @set_access(['Scan Barcodes'])
 class BarcodeUtilHandler(BaseHandler, BarcodeUtilHelper):
