@@ -61,7 +61,7 @@ class TestQiitaPush(TestHandlerBase):
         self.assertIn('000004215', exp)
         self.post(r"/notify-qiita/", data={'foo': 'bar'})
 
-        sleep(60)
+        #sleep(60)
         obs = db._con.execute_fetchall("""SELECT barcode
                                           FROM barcodes.project_qiita_buffer
                                           WHERE pushed_to_qiita='Y'""")

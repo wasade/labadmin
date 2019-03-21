@@ -1465,7 +1465,6 @@ class KniminAccess(object):
                      WHERE barcode IN %s"""
             try:
                 self._con.execute(sql, [tuple(barcodes)])
-                logger.debug('AN EXCEPTION DID NOT OCCUR IN MARK')
             except Exception as e:
                 logger.debug(e.pgcode)
 
