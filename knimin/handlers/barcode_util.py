@@ -230,7 +230,6 @@ class PushQiitaHandler(BaseHandler):
         r = None
         logger.debug('Entering PushQiitaHandler._push_to_qiita()')
 
-        logger.debug('Getting category data from Qiita Database')
         try:
             cats = self.qclient.get('/api/v1/study/%s/samples/info' % study_id)
         except Exception as e:
@@ -248,57 +247,47 @@ class PushQiitaHandler(BaseHandler):
             logger.debug("PATCHing failed: " + e.msg)
 
         logger.debug('Leaving PushQiitaHandler._push_to_qiita()')
-        yield None
 
     @authenticated
     def get(self):
-        logger.debug('Entering PushQiitaHandler.get()')
         dat = {}
 
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
         status = db.get_send_qiita_buffer_status()
         dat = {'status': status, "barcodes": barcodes}
 
-        logger.debug('Leaving PushQiitaHandler.get()')
         self.write(json_encode(dat))
         self.finish()
 
     @authenticated
     @gen.coroutine
     def post(self):
-        logger.debug('Entering PushQiitaHandler.post()')
         barcodes = db.get_unsent_barcodes_from_qiita_buffer()
         logger.debug(barcodes)
 
         if not barcodes:
             logger.debug('No barcodes were present in the buffer')
-            logger.debug('Leaving(1) PushQiitaHandler.post()')
             return
 
         # certainly not a perfect mutex, however tornado is single threaded
-        logger.debug('Getting buffer status')
         status = db.get_send_qiita_buffer_status()
         if status in ['Failed!', 'Pushing...']:
             logger.debug(status)
             logger.debug('Leaving(2) PushQiitaHandler.post()')
             return
 
-        logger.debug('Setting buffer status')
         db.set_send_qiita_buffer_status("Pushing...")
 
+        result = 'empty'
         logger.debug('Pushing to Qiita')
         try:
             result = yield self._push_to_qiita(self.study_id, barcodes)
         except:  # noqa
             logger.debug('Push failed')
             db.set_send_qiita_buffer_status("Failed!")
-        else:
-            logger.debug('Push succeeded')
 
         db.mark_barcodes_sent_to_qiita(barcodes)
         db.set_send_qiita_buffer_status("Idle")
-
-        logger.debug('Leaving(3) PushQiitaHandler.post()')
 
 
 @set_access(['Scan Barcodes'])
