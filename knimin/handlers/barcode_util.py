@@ -227,7 +227,6 @@ class PushQiitaHandler(BaseHandler):
 
     @concurrent.run_on_executor
     def _push_to_qiita(self, study_id, samples):
-        r = None
         logger.debug('Entering PushQiitaHandler._push_to_qiita()')
 
         try:
@@ -278,10 +277,9 @@ class PushQiitaHandler(BaseHandler):
 
         db.set_send_qiita_buffer_status("Pushing...")
 
-        result = 'empty'
         logger.debug('Pushing to Qiita')
         try:
-            result = yield self._push_to_qiita(self.study_id, barcodes)
+            yield self._push_to_qiita(self.study_id, barcodes)
         except:  # noqa
             logger.debug('Push failed')
             db.set_send_qiita_buffer_status("Failed!")

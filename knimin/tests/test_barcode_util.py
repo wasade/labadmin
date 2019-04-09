@@ -11,8 +11,6 @@ from knimin import db
 from knimin.tests.tornado_test_base import TestHandlerBase
 from knimin.handlers.barcode_util import BarcodeUtilHelper, get_qiita_client
 
-from time import sleep
-
 
 class TestQiitaPush(TestHandlerBase):
     def setUp(self):
@@ -61,7 +59,6 @@ class TestQiitaPush(TestHandlerBase):
         self.assertIn('000004215', exp)
         self.post(r"/notify-qiita/", data={'foo': 'bar'})
 
-        #sleep(60)
         obs = db._con.execute_fetchall("""SELECT barcode
                                           FROM barcodes.project_qiita_buffer
                                           WHERE pushed_to_qiita='Y'""")
