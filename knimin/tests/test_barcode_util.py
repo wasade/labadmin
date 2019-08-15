@@ -12,7 +12,7 @@ from tornado.escape import url_escape, xhtml_escape, json_decode
 from knimin import db
 from knimin.tests.tornado_test_base import TestHandlerBase
 from knimin.handlers.barcode_util import BarcodeUtilHelper, get_qiita_client, \
-        align_with_qiita_categories, AG_DEBUG_OBSERVED_CATEGORIES
+    align_with_qiita_categories, AG_DEBUG_OBSERVED_CATEGORIES
 
 
 class TestQiitaPush(TestHandlerBase):
@@ -83,8 +83,8 @@ class TestQiitaPush(TestHandlerBase):
         # condition. This test SHOULD fail when metadata pulldown is
         # successfully revisited.
         self.assertFalse('000017291' in data_as_pd.index)
-        data_as_pd = data_as_pd.append(pd.Series(['pulldown-issue'] *
-                                                 len(data_as_pd.columns),
+        nc = len(data_as_pd.columns)
+        data_as_pd = data_as_pd.append(pd.Series(['pulldown-issue'] * nc,
                                                  index=data_as_pd.columns,
                                                  name='000017291'))
 
