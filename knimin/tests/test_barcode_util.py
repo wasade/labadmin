@@ -83,13 +83,19 @@ class TestQiitaPush(TestHandlerBase):
         # condition. This test SHOULD fail when metadata pulldown is
         # successfully revisited.
         self.assertFalse('000017291' in data_as_pd.index)
+        data_as_pd = data_as_pd.append(pd.Series(['pulldown-issue'] *
+                                                 len(data_as_pd.columns),
+                                                 index=data_as_pd.columns,
+                                                 name='000017291'))
 
-        failure = pd.Series(['pulldown issue'] * len(data_as_pd.columns),
-                            index=data_as_pd.columns)
-        failure['env_package'] = 'Air'  # per a request from Gail
+        # per a request from Gail
+        data_as_pd.loc['000017291', 'env_package'] = 'Air'
+
+        for c in set(AG_DEBUG_OBSERVED_CATEGORIES) - set(data_as_pd.columns):
+            data_as_pd[c] = 'Missing: Not provided'
 
         exp = {'000004216': data_as_pd.loc['000004216'].to_dict(),
-               '000017291': failure.to_dict(),
+               '000017291': data_as_pd.loc['000017291'].to_dict(),
                '000004215': data_as_pd.loc['000004215'].to_dict()}
 
         obs = align_with_qiita_categories(samples,

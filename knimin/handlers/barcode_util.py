@@ -4,8 +4,10 @@ from tornado.escape import json_encode
 from tornado import gen, concurrent
 from knimin.handlers.base import BaseHandler
 from datetime import datetime
+import StringIO
 import requests
 import functools
+import pandas as pd
 from qiita_client import QiitaClient
 
 from knimin import db
@@ -460,12 +462,88 @@ FAQ section for when you can expect results.<br/>
         return subject, body_message
 
 
-def align_with_qiita_categories(samples, categories):
-    # obviously should instead align to the actual sample metadata...
-    aligned = {}
-    for s in samples:
-        aligned[s] = {c: 'LabControl test' for c in categories}
-    return aligned
+def align_with_qiita_categories(samples, categories,
+                                failure_value='pulldown-issue',
+                                omitted_value='Missing: Not provided'):
+    """Obtain sample metadata, and subset to those categories present in Qiita
+
+    Parameters
+    ----------
+    samples : list of str
+        The samples to get metadata for
+    categories : Iterable of str
+        The categories to align against
+    failure_value : str, optional
+        The default value to use for a sample that failed pulldown.
+    omitted_value : str, optional
+        The default value to use for a variable not represented either in Qiita
+        or the extracted metadata.
+
+    Notes
+    -----
+    The env_package variable for failures will be autofilled with "Air" per a
+    request from Gail.
+
+    Any variable in extract metadata that is not represented in Qiita will be
+    silently omitted (e.g., PM_USEFUL).
+
+    Any variable in Qiita that is not represented in the extracted metadata
+    (e.g., qiita_empo_1) will be filled with the omitted_value.
+
+    Returns
+    -------
+    dict of dict
+        A stucture of the metadata per sample. {sample-id: {category: value}}
+    """
+    surveys, failures = db.pulldown(samples)
+
+    # pulldown returns a per-survey (e.g., primary, fermented food, etc) tab
+    # delimited file. What we're doing here is de-serializing those data into
+    # per survey DataFrames, and the concatenating them together such that
+    # each sample ID is a row, each sample ID is only represented once, and the
+    # columns correspond to variables from each survey type.
+    surveys_as_df = []
+    for _, v in sorted(surveys.items()):
+        surveys_as_df.append(pd.read_csv(StringIO.StringIO(v), sep='\t',
+                                         dtype=str).set_index('sample_name'))
+    surveys_as_df = pd.concat(surveys_as_df, axis=1)
+
+    # columns in Qiita are lower case
+    surveys_as_df.columns = [c.lower() for c in surveys_as_df.columns]
+
+    # subset the frame to the overlapping columns
+    categories = set(categories)
+    column_overlap = [c for c in surveys_as_df.columns if c in categories]
+    surveys_as_df = surveys_as_df[column_overlap]
+
+    # missing categories are those in qiita but not in the pulldown
+    missing_categories = categories - set(column_overlap)
+
+    # represent failures in the dataframe
+    # mat -> [[failure_value, ...], [failure_value, ...]] such that a row per
+    # failure and a column per survey column is represented
+    n_cols = len(surveys_as_df.columns)
+    mat = [[failure_value] * n_cols] * len(failures)
+    failures_as_df = pd.DataFrame(mat, index=list(failures),
+                                  columns=surveys_as_df.columns)
+    failures_as_df['env_package'] = 'Air'  # per request from Gail
+
+    # append will add rows aligned on the columns
+    surveys_as_df = surveys_as_df.append(failures_as_df)
+
+    # represent missing entries in the dataframe
+    # mat -> [[omitted_value, ...], [omitted_value, ...]] such that a row per
+    # sample and a column per missing category is represented
+    n_samples = len(surveys_as_df.index)
+    n_missing = len(missing_categories)
+    mat = [[omitted_value] * n_missing] * n_samples
+    missing = pd.DataFrame(mat, index=list(surveys_as_df.index),
+                           columns=sorted(missing_categories))
+
+    # join will add columns aligned on the index
+    surveys_as_df = surveys_as_df.join(missing)
+
+    return surveys_as_df.to_dict(orient='index')
 
 
 @set_access(['Scan Barcodes'])
