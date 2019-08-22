@@ -62,6 +62,13 @@ class TestQiitaPush(TestHandlerBase):
         self.assertIn('000004215', exp)
         self.post(r"/notify-qiita/", data={'foo': 'bar'})
 
+        # cannot find another way to force the async call to
+        # actually behave as synchronous here.
+        try:
+            self.wait()
+        except AssertionError:
+            pass
+
         obs = db._con.execute_fetchall("""SELECT barcode
                                           FROM barcodes.project_qiita_buffer
                                           WHERE pushed_to_qiita='Y'""")
@@ -82,8 +89,7 @@ class TestQiitaPush(TestHandlerBase):
                                  dtype=str)
         data_as_pd.set_index('sample_name', inplace=True)
         data_as_pd.columns = [c.lower() for c in data_as_pd.columns]
-        print("in tests")
-        print(data_as_pd.country)
+
         # as of 15august2019, 000017291 does not successfully pulldown. this
         # sample has an inconsistency in the metadata that triggers a failure
         # condition. This test SHOULD fail when metadata pulldown is
