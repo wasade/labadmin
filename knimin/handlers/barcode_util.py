@@ -507,6 +507,7 @@ def align_with_qiita_categories(samples, categories,
         surveys_as_df.append(pd.read_csv(StringIO.StringIO(v), sep='\t',
                                          dtype=str).set_index('sample_name'))
     surveys_as_df = pd.concat(surveys_as_df, axis=1)
+    print(surveys_as_df.index)
 
     # columns in Qiita are lower case
     surveys_as_df.columns = [c.lower() for c in surveys_as_df.columns]
@@ -530,6 +531,7 @@ def align_with_qiita_categories(samples, categories,
 
     # append will add rows aligned on the columns
     surveys_as_df = surveys_as_df.append(failures_as_df)
+    print(surveys_as_df.index)
 
     # represent missing entries in the dataframe
     # mat -> [[omitted_value, ...], [omitted_value, ...]] such that a row per
