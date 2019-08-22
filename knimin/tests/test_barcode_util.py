@@ -77,7 +77,8 @@ class TestQiitaPush(TestHandlerBase):
                                  dtype=str)
         data_as_pd.set_index('sample_name', inplace=True)
         data_as_pd.columns = [c.lower() for c in data_as_pd.columns]
-
+        print("in tests")
+        print(data_as_pd.country)
         # as of 15august2019, 000017291 does not successfully pulldown. this
         # sample has an inconsistency in the metadata that triggers a failure
         # condition. This test SHOULD fail when metadata pulldown is
