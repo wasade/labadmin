@@ -509,7 +509,7 @@ def align_with_qiita_categories(samples, categories,
                                          dtype=str).set_index('sample_name'))
     surveys_as_df = pd.concat(surveys_as_df, axis=1)
     print("in code")
-    print(surveys_as_df.country)
+    print(surveys_as_df.COUNTRY)
 
     # oddly, it seems possible in the present pulldown code for an ID to be
     # successful and a failure
