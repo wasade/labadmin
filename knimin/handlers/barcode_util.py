@@ -495,6 +495,7 @@ def align_with_qiita_categories(samples, categories,
     dict of dict
         A stucture of the metadata per sample. {sample-id: {category: value}}
     """
+    print(samples)
     surveys, failures = db.pulldown(samples)
 
     print(failures)
