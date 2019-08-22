@@ -500,7 +500,7 @@ def align_with_qiita_categories(samples, categories,
     print(failures)
     # pulldown returns a per-survey (e.g., primary, fermented food, etc) tab
     # delimited file. What we're doing here is de-serializing those data into
-    # per survey DataFrames, and the concatenating them together such that
+    # per survey DataFrames, and then concatenating them together such that
     # each sample ID is a row, each sample ID is only represented once, and the
     # columns correspond to variables from each survey type.
     surveys_as_df = []
@@ -520,32 +520,25 @@ def align_with_qiita_categories(samples, categories,
 
     # subset the frame to the overlapping columns
     categories = set(categories)
-    column_overlap = [c for c in surveys_as_df.columns if c in categories]
+    column_overlap = surveys_as_df.columns.intersection(categories)
     surveys_as_df = surveys_as_df[column_overlap]
 
     # missing categories are those in qiita but not in the pulldown
     missing_categories = categories - set(column_overlap)
 
     # represent failures in the dataframe
-    # mat -> [[failure_value, ...], [failure_value, ...]] such that a row per
-    # failure and a column per survey column is represented
-    n_cols = len(surveys_as_df.columns)
-    mat = [[failure_value] * n_cols] * len(failures)
-    failures_as_df = pd.DataFrame(mat, index=list(failures),
+    failures_as_df = pd.DataFrame(index=list(failures),
                                   columns=surveys_as_df.columns)
+    failures_as_df.fillna(failure_value, inplace=True)
     failures_as_df['env_package'] = 'Air'  # per request from Gail
 
     # append will add rows aligned on the columns
     surveys_as_df = surveys_as_df.append(failures_as_df)
 
     # represent missing entries in the dataframe
-    # mat -> [[omitted_value, ...], [omitted_value, ...]] such that a row per
-    # sample and a column per missing category is represented
-    n_samples = len(surveys_as_df.index)
-    n_missing = len(missing_categories)
-    mat = [[omitted_value] * n_missing] * n_samples
-    missing = pd.DataFrame(mat, index=list(surveys_as_df.index),
+    missing = pd.DataFrame(index=list(surveys_as_df.index),
                            columns=sorted(missing_categories))
+    missing.fillna(omitted_value, inplace=True)
 
     # join will add columns aligned on the index
     surveys_as_df = surveys_as_df.join(missing)
