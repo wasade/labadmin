@@ -496,6 +496,7 @@ def align_with_qiita_categories(samples, categories,
         A stucture of the metadata per sample. {sample-id: {category: value}}
     """
     surveys, failures = db.pulldown(samples)
+
     print(failures)
     # pulldown returns a per-survey (e.g., primary, fermented food, etc) tab
     # delimited file. What we're doing here is de-serializing those data into
@@ -508,6 +509,10 @@ def align_with_qiita_categories(samples, categories,
                                          dtype=str).set_index('sample_name'))
     surveys_as_df = pd.concat(surveys_as_df, axis=1)
     print(surveys_as_df.index)
+
+    # oddly, it seems possible in the present pulldown code for an ID to be
+    # successful and a failure
+    failures = {f for f in failures if f not in surveys_as_df.index}
 
     # columns in Qiita are lower case
     surveys_as_df.columns = [c.lower() for c in surveys_as_df.columns]
