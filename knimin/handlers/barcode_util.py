@@ -543,6 +543,7 @@ def align_with_qiita_categories(samples, categories,
     # join will add columns aligned on the index
     surveys_as_df = surveys_as_df.join(missing)
 
+    print(surveys_as_df.index)
     return surveys_as_df.to_dict(orient='index')
 
 
