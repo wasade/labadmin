@@ -496,7 +496,7 @@ def align_with_qiita_categories(samples, categories,
         A stucture of the metadata per sample. {sample-id: {category: value}}
     """
     surveys, failures = db.pulldown(samples)
-
+    print(failures)
     # pulldown returns a per-survey (e.g., primary, fermented food, etc) tab
     # delimited file. What we're doing here is de-serializing those data into
     # per survey DataFrames, and the concatenating them together such that
