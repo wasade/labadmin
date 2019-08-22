@@ -507,6 +507,8 @@ def align_with_qiita_categories(samples, categories,
     for _, v in sorted(surveys.items()):
         surveys_as_df.append(pd.read_csv(StringIO.StringIO(v), sep='\t',
                                          dtype=str).set_index('sample_name'))
+        print(surveys_as_df[-1][surveys_as_df[-1].columns[:5]])
+
     surveys_as_df = pd.concat(surveys_as_df, axis=1)
     print("in code")
     print(surveys_as_df.COUNTRY)
