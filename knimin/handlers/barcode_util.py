@@ -495,10 +495,8 @@ def align_with_qiita_categories(samples, categories,
     dict of dict
         A stucture of the metadata per sample. {sample-id: {category: value}}
     """
-    print(samples)
     surveys, failures = db.pulldown(samples)
 
-    print(failures)
     # pulldown returns a per-survey (e.g., primary, fermented food, etc) tab
     # delimited file. What we're doing here is de-serializing those data into
     # per survey DataFrames, and then concatenating them together such that
@@ -508,11 +506,8 @@ def align_with_qiita_categories(samples, categories,
     for _, v in sorted(surveys.items()):
         surveys_as_df.append(pd.read_csv(StringIO.StringIO(v), sep='\t',
                                          dtype=str).set_index('sample_name'))
-        print(surveys_as_df[-1][surveys_as_df[-1].columns[:5]])
 
     surveys_as_df = pd.concat(surveys_as_df, axis=1)
-    print("in code")
-    print(surveys_as_df.COUNTRY)
 
     # oddly, it seems possible in the present pulldown code for an ID to be
     # successful and a failure
@@ -546,7 +541,6 @@ def align_with_qiita_categories(samples, categories,
     # join will add columns aligned on the index
     surveys_as_df = surveys_as_df.join(missing)
 
-    print(surveys_as_df.country)
     return surveys_as_df.to_dict(orient='index')
 
 
